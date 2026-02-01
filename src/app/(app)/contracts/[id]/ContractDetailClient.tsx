@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -22,7 +23,24 @@ type VersionText = {
   errorMessage: string | null;
   extractor: string;
 } | null;
-type Version = { id: string; versionNumber: number; documents: Doc[]; versionText: VersionText };
+type Compliance = { policyId: string; policyName: string; score: number; status: string };
+type Finding = {
+  id: string;
+  clauseType: string;
+  ruleId: string;
+  complianceStatus: string;
+  severity: string | null;
+  riskType: string | null;
+  recommendation: string | null;
+};
+type Version = {
+  id: string;
+  versionNumber: number;
+  documents: Doc[];
+  versionText: VersionText;
+  compliances: Compliance[];
+  findings: Finding[];
+};
 type Payload = {
   id: string;
   title: string;
@@ -53,14 +71,20 @@ function IngestionBadge({ status }: { status: string | null }) {
   );
 }
 
+type PolicyOption = { id: string; name: string };
+
 export function ContractDetailClient({
   contractId,
   payload,
+  policies,
   canMutate,
+  canAnalyze,
 }: {
   contractId: string;
   payload: Payload;
+  policies: PolicyOption[];
   canMutate: boolean;
+  canAnalyze: boolean;
 }) {
   const [addingVersion, setAddingVersion] = useState(false);
   const [uploadForm, setUploadForm] = useState<{ versionId: string } | null>(null);
@@ -70,6 +94,8 @@ export function ContractDetailClient({
   const [expandedTextVersionId, setExpandedTextVersionId] = useState<string | null>(null);
   const [fullTextCache, setFullTextCache] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [analyzingVersionId, setAnalyzingVersionId] = useState<string | null>(null);
+  const [selectedPolicyByVersion, setSelectedPolicyByVersion] = useState<Record<string, string>>({});
   const router = useRouter();
 
   async function addVersion() {
@@ -167,6 +193,28 @@ export function ContractDetailClient({
     }
   }
 
+  async function analyzeContract(versionId: string, policyId: string) {
+    if (!canAnalyze) return;
+    setError(null);
+    setAnalyzingVersionId(versionId);
+    try {
+      const res = await fetch(
+        `/api/contracts/${contractId}/versions/${versionId}/analyze`,
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ policyId }) }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Analysis failed");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Analysis failed");
+    } finally {
+      setAnalyzingVersionId(null);
+    }
+  }
+
   return (
     <div className="space-y-6">
       {error && <p className="text-sm text-destructive">{error}</p>}
@@ -212,6 +260,115 @@ export function ContractDetailClient({
                     >
                       {extractingVersionId === v.id ? "Extracting…" : "Extract text"}
                     </Button>
+                  </div>
+                )}
+
+                {/* Analysis — always visible per version */}
+                <div className="rounded-lg border border-dashed border-muted-foreground/30 bg-muted/10 p-4 space-y-3">
+                  <p className="text-sm font-semibold">Analysis</p>
+                  {policies.length === 0 ? (
+                    <div
+                      className="rounded-md border border-amber-500/50 bg-amber-50 dark:bg-amber-950/30 px-3 py-2 text-sm text-amber-800 dark:text-amber-200"
+                      role="alert"
+                    >
+                      No active policy found.{" "}
+                      <Link href="/policies" className="underline font-medium">
+                        Create a policy
+                      </Link>{" "}
+                      to analyze contracts.
+                    </div>
+                  ) : (
+                    <>
+                      {(!versionText || versionText.status !== "TEXT_READY") ? (
+                        <p className="text-sm text-muted-foreground">
+                          Extract text first to enable analysis.
+                        </p>
+                      ) : null}
+                      <div className="flex flex-wrap items-end gap-2">
+                        <div>
+                          <Label className="text-sm">Policy</Label>
+                          <select
+                            className="ml-2 rounded border bg-background px-2 py-1 text-sm"
+                            value={selectedPolicyByVersion[v.id] ?? ""}
+                            onChange={(e) =>
+                              setSelectedPolicyByVersion((prev) => ({ ...prev, [v.id]: e.target.value }))
+                            }
+                          >
+                            <option value="">Select policy</option>
+                            {policies.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => analyzeContract(v.id, selectedPolicyByVersion[v.id] ?? "")}
+                          disabled={
+                            !canAnalyze ||
+                            !versionText ||
+                            versionText.status !== "TEXT_READY" ||
+                            !selectedPolicyByVersion[v.id] ||
+                            analyzingVersionId !== null
+                          }
+                        >
+                          {analyzingVersionId === v.id ? "Analyzing…" : "Analyze contract"}
+                        </Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+
+                {/* Compliance score + findings */}
+                {(v.compliances.length > 0 || v.findings.length > 0) && (
+                  <div className="rounded border bg-muted/20 p-3 space-y-2">
+                    <p className="text-sm font-medium">Compliance</p>
+                    {v.compliances.length > 0 && (
+                      <ul className="text-sm space-y-1">
+                        {v.compliances.map((c) => (
+                          <li key={c.policyId}>
+                            <span className="font-medium">{c.policyName}</span>: score{" "}
+                            <span className="font-mono">{c.score}</span>/100 —{" "}
+                            <span
+                              className={
+                                c.status === "COMPLIANT"
+                                  ? "text-green-600 dark:text-green-400"
+                                  : c.status === "NON_COMPLIANT"
+                                    ? "text-red-600 dark:text-red-400"
+                                    : "text-amber-600 dark:text-amber-400"
+                              }
+                            >
+                              {c.status}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {v.findings.length > 0 && (
+                      <div className="pt-2">
+                        <p className="text-xs font-medium text-muted-foreground mb-1">Findings</p>
+                        <ul className="text-sm space-y-1 list-disc list-inside">
+                          {v.findings.map((f) => (
+                            <li key={f.id}>
+                              <span className="font-mono text-xs">{f.clauseType}</span>:{" "}
+                              <span
+                                className={
+                                  f.complianceStatus === "VIOLATION"
+                                    ? "text-red-600 dark:text-red-400"
+                                    : f.complianceStatus === "COMPLIANT"
+                                      ? "text-green-600 dark:text-green-400"
+                                      : ""
+                                }
+                              >
+                                {f.complianceStatus}
+                              </span>
+                              {f.recommendation && ` — ${f.recommendation}`}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
                 )}
 

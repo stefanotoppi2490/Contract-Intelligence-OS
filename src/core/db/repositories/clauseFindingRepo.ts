@@ -1,5 +1,5 @@
 import { prisma } from "../prisma";
-import type { ClauseType } from "@prisma/client";
+import type { ClauseTaxonomy, FindingComplianceStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
 export function createClauseFinding(data: Prisma.ClauseFindingCreateInput) {
@@ -7,17 +7,21 @@ export function createClauseFinding(data: Prisma.ClauseFindingCreateInput) {
 }
 
 export function findClauseFindingById(id: string) {
-  return prisma.clauseFinding.findUnique({ where: { id } });
+  return prisma.clauseFinding.findUnique({
+    where: { id },
+    include: { rule: true },
+  });
 }
 
-export function findClauseFindingByVersionAndClauseType(
+export function findClauseFindingByVersionAndRule(
   contractVersionId: string,
-  clauseType: ClauseType
+  ruleId: string
 ) {
   return prisma.clauseFinding.findUnique({
     where: {
-      contractVersionId_clauseType: { contractVersionId, clauseType },
+      contractVersionId_ruleId: { contractVersionId, ruleId },
     },
+    include: { rule: true },
   });
 }
 
@@ -32,28 +36,25 @@ export function findManyClauseFindingsByContractVersion(
   return prisma.clauseFinding.findMany({
     ...args,
     where: { contractVersionId },
-    orderBy: args?.orderBy ?? { createdAt: "desc" },
+    orderBy: args?.orderBy ?? { createdAt: "asc" },
+    include: args?.include ?? { rule: true },
   });
-}
-
-export function updateClauseFinding(id: string, data: Prisma.ClauseFindingUpdateInput) {
-  return prisma.clauseFinding.update({ where: { id }, data });
-}
-
-export function deleteClauseFinding(id: string) {
-  return prisma.clauseFinding.delete({ where: { id } });
 }
 
 export function upsertClauseFinding(
   contractVersionId: string,
-  clauseType: ClauseType,
-  data: Prisma.ClauseFindingCreateInput
+  ruleId: string,
+  data: Omit<Prisma.ClauseFindingCreateInput, "contractVersion" | "rule">
 ) {
   return prisma.clauseFinding.upsert({
     where: {
-      contractVersionId_clauseType: { contractVersionId, clauseType },
+      contractVersionId_ruleId: { contractVersionId, ruleId },
     },
-    create: data,
+    create: {
+      contractVersionId,
+      ruleId,
+      ...data,
+    },
     update: data,
   });
 }

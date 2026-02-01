@@ -74,6 +74,44 @@ enum ClauseType {
   OTHER
 }
 
+// STEP 5A: clause taxonomy for policy engine
+enum ClauseTaxonomy {
+  TERMINATION
+  LIABILITY
+  INTELLECTUAL_PROPERTY
+  PAYMENT_TERMS
+  DATA_PRIVACY
+  CONFIDENTIALITY
+  GOVERNING_LAW
+  SLA
+  SCOPE
+  OTHER
+}
+
+// STEP 5A: rule types for deterministic policy engine
+enum PolicyRuleType {
+  REQUIRED
+  FORBIDDEN
+  MIN_VALUE
+  MAX_VALUE
+  ALLOWED_VALUES
+}
+
+// STEP 5A: per-finding compliance status
+enum FindingComplianceStatus {
+  COMPLIANT
+  VIOLATION
+  UNCLEAR
+  NOT_APPLICABLE
+}
+
+// STEP 5A: aggregate compliance status per version+policy
+enum ComplianceStatusType {
+  COMPLIANT
+  NEEDS_REVIEW
+  NON_COMPLIANT
+}
+
 enum RuleType {
   THRESHOLD
   BOOLEAN
@@ -249,12 +287,13 @@ model ContractVersion {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  contract          Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  documents         Document[]
-  versionText       ContractVersionText?
-  clauseFindings    ClauseFinding[]
-  policyViolations  PolicyViolation[]
-  exceptionRequests ExceptionRequest[]
+  contract           Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  documents          Document[]
+  versionText        ContractVersionText?
+  clauseFindings     ClauseFinding[]
+  policyViolations   PolicyViolation[]
+  exceptionRequests  ExceptionRequest[]
+  contractCompliance ContractCompliance[]
 
   @@unique([contractId, versionNumber])
   @@index([contractId, createdAt])
@@ -295,46 +334,78 @@ model ContractVersionText {
   @@index([contractVersionId])
 }
 
-// ─── AI & analysis artifacts ───────────────────────────────────────────────
+// ─── AI & analysis artifacts (STEP 5A: policy engine findings) ───────────────
 
 model ClauseFinding {
-  id                String   @id @default(cuid())
+  id                String                 @id @default(cuid())
   contractVersionId String
-  clauseType        ClauseType
-  extractedValues   Json?    // structured extracted values
-  evidenceAnchors   Json?    // e.g. [{ startOffset, endOffset, snippet }]
-  confidence        Float?   // 0..1
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  clauseType        ClauseTaxonomy
+  ruleId            String                 // FK to PolicyRule
+  complianceStatus  FindingComplianceStatus
+  severity          Severity?
+  riskType          RiskType?
+  recommendation    String?               @db.Text
+  createdAt         DateTime              @default(now())
+  updatedAt         DateTime              @updatedAt
 
   contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  rule            PolicyRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
 
-  @@unique([contractVersionId, clauseType])
+  @@unique([contractVersionId, ruleId])
   @@index([contractVersionId, createdAt])
 }
 
 model Policy {
-  id               String    @id @default(cuid())
-  workspaceId      String
-  policyId         String    // business identifier (slug)
-  clauseType       ClauseType
-  ruleType         RuleType
-  expectedValue    Json?     // rule-specific expected (threshold, whitelist, etc.)
-  severity         Severity?
-  riskType         RiskType?
-  partyBias        PartyBias?
-  recommendedAction RecommendedAction?
-  allowException   Boolean   @default(false)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  description String?  @db.Text
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
-  policyViolations  PolicyViolation[]
-  exceptionRequests ExceptionRequest[]
+  workspace          Workspace           @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  rules              PolicyRule[]
+  policyViolations   PolicyViolation[]
+  exceptionRequests  ExceptionRequest[]
+  contractCompliance ContractCompliance[]
 
-  @@unique([workspaceId, policyId])
-  @@index([workspaceId, clauseType])
   @@index([workspaceId, createdAt])
+}
+
+model PolicyRule {
+  id           String         @id @default(cuid())
+  policyId     String
+  clauseType   ClauseTaxonomy
+  ruleType     PolicyRuleType
+  expectedValue Json?          // string | number | json
+  severity     Severity?
+  riskType     RiskType?
+  weight       Int            @default(1) // deducted per VIOLATION
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  policy         Policy          @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  clauseFindings ClauseFinding[]
+
+  @@index([policyId, clauseType])
+  @@index([policyId, createdAt])
+}
+
+model ContractCompliance {
+  id                 String               @id @default(cuid())
+  contractVersionId  String
+  policyId           String
+  score              Int                  // 0–100
+  status             ComplianceStatusType
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  policy          Policy         @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([contractVersionId, policyId])
+  @@index([contractVersionId, createdAt])
 }
 
 model PolicyViolation {

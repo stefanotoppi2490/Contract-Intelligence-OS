@@ -6,12 +6,9 @@ export function createPolicy(data: Prisma.PolicyCreateInput) {
 }
 
 export function findPolicyById(id: string) {
-  return prisma.policy.findUnique({ where: { id } });
-}
-
-export function findPolicyByWorkspaceAndPolicyId(workspaceId: string, policyId: string) {
   return prisma.policy.findUnique({
-    where: { workspaceId_policyId: { workspaceId, policyId } },
+    where: { id },
+    include: { rules: true },
   });
 }
 
@@ -25,15 +22,12 @@ export function findManyPoliciesByWorkspace(
 ) {
   return prisma.policy.findMany({
     ...args,
-    where: { workspaceId },
+    where: { workspaceId, isActive: true },
     orderBy: args?.orderBy ?? { createdAt: "desc" },
+    include: args?.include ?? { rules: true },
   });
 }
 
 export function updatePolicy(id: string, data: Prisma.PolicyUpdateInput) {
   return prisma.policy.update({ where: { id }, data });
-}
-
-export function deletePolicy(id: string) {
-  return prisma.policy.delete({ where: { id } });
 }

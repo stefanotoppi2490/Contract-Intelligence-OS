@@ -81,7 +81,7 @@ export function findContractById(id: string) {
   });
 }
 
-/** Full detail for contract detail page (versions with documents and versionText). Workspace-scoped: returns null if contract is not in workspace. */
+/** Full detail for contract detail page (versions with documents, versionText, compliance, findings). Workspace-scoped. */
 export function getContractDetail(id: string, workspaceId: string) {
   return prisma.contract.findUnique({
     where: { id, workspaceId },
@@ -92,6 +92,8 @@ export function getContractDetail(id: string, workspaceId: string) {
         include: {
           documents: true,
           versionText: true,
+          contractCompliance: { include: { policy: true } },
+          clauseFindings: { include: { rule: true } },
         },
       },
     },

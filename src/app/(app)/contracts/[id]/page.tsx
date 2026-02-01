@@ -3,7 +3,10 @@ import Link from "next/link";
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireWorkspace } from "@/core/services/security/rbac";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
+import * as policyRepo from "@/core/db/repositories/policyRepo";
 import { ContractDetailClient } from "./ContractDetailClient";
+
+export const dynamic = "force-dynamic";
 
 export default async function ContractDetailPage({
   params,
@@ -18,7 +21,10 @@ export default async function ContractDetailPage({
   }
   const workspaceId = session.currentWorkspaceId!;
   const { id } = await params;
-  const contract = await contractRepo.getContractDetail(id, workspaceId);
+  const [contract, policies] = await Promise.all([
+    contractRepo.getContractDetail(id, workspaceId),
+    policyRepo.findManyPoliciesByWorkspace(workspaceId),
+  ]);
   if (!contract) notFound();
   const TEXT_PREVIEW_LEN = 500;
   const payload = {
@@ -51,6 +57,21 @@ export default async function ContractDetailPage({
             extractor: v.versionText.extractor,
           }
         : null,
+      compliances: v.contractCompliance.map((c) => ({
+        policyId: c.policyId,
+        policyName: c.policy.name,
+        score: c.score,
+        status: c.status,
+      })),
+      findings: v.clauseFindings.map((f) => ({
+        id: f.id,
+        clauseType: f.clauseType,
+        ruleId: f.ruleId,
+        complianceStatus: f.complianceStatus,
+        severity: f.severity,
+        riskType: f.riskType,
+        recommendation: f.recommendation,
+      })),
     })),
   };
   return (
@@ -67,7 +88,9 @@ export default async function ContractDetailPage({
       <ContractDetailClient
         contractId={contract.id}
         payload={payload}
+        policies={policies.map((p) => ({ id: p.id, name: p.name }))}
         canMutate={session.role !== "VIEWER"}
+        canAnalyze={["LEGAL", "RISK", "ADMIN"].includes(session.role ?? "")}
       />
     </div>
   );
