@@ -1,4 +1,5 @@
 import { prisma } from "../prisma";
+import type { IngestionStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
 
 export function createDocument(data: Prisma.DocumentCreateInput) {
@@ -26,6 +27,42 @@ export function attachDocumentToVersion(
       storageKey: data.storageKey ?? undefined,
       source: data.source ?? "UPLOAD",
     },
+  });
+}
+
+/** Create document with blob URL and ingestion status (real upload). */
+export function createDocumentWithBlob(
+  contractVersionId: string,
+  data: {
+    originalName: string;
+    mimeType?: string | null;
+    size?: number | null;
+    storageKey: string;
+    source?: "UPLOAD" | "INTEGRATION";
+    ingestionStatus?: IngestionStatus;
+    lastError?: string | null;
+  }
+) {
+  return prisma.document.create({
+    data: {
+      contractVersionId,
+      originalName: data.originalName,
+      fileName: data.originalName,
+      mimeType: data.mimeType ?? undefined,
+      size: data.size ?? undefined,
+      storageKey: data.storageKey,
+      source: data.source ?? "UPLOAD",
+      ingestionStatus: data.ingestionStatus ?? "UPLOADED",
+      lastError: data.lastError ?? undefined,
+    },
+  });
+}
+
+/** Main (only) document for a version (MVP: one doc per version). */
+export function findMainDocumentByContractVersion(contractVersionId: string) {
+  return prisma.document.findFirst({
+    where: { contractVersionId },
+    orderBy: { createdAt: "desc" },
   });
 }
 

@@ -45,6 +45,23 @@ enum DocumentSource {
   INTEGRATION
 }
 
+enum IngestionStatus {
+  UPLOADED
+  TEXT_READY
+  ERROR
+}
+
+enum TextExtractor {
+  PDF
+  DOCX
+  TXT
+}
+
+enum TextStatus {
+  TEXT_READY
+  ERROR
+}
+
 enum ClauseType {
   LIABILITY_CAP
   INDEMNIFICATION
@@ -232,8 +249,9 @@ model ContractVersion {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  contract          Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contract          Contract             @relation(fields: [contractId], references: [id], onDelete: Cascade)
   documents         Document[]
+  versionText       ContractVersionText?
   clauseFindings    ClauseFinding[]
   policyViolations  PolicyViolation[]
   exceptionRequests ExceptionRequest[]
@@ -243,20 +261,38 @@ model ContractVersion {
 }
 
 model Document {
-  id                 String        @id @default(cuid())
+  id                 String           @id @default(cuid())
   contractVersionId  String
   originalName       String
   fileName           String?
   mimeType           String?
   size               Int?
   storageKey         String?
-  source             DocumentSource @default(UPLOAD)
-  createdAt          DateTime      @default(now())
-  updatedAt          DateTime      @updatedAt
+  source             DocumentSource   @default(UPLOAD)
+  ingestionStatus    IngestionStatus? @default(UPLOADED)
+  lastError          String?          @db.Text
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
 
   @@index([contractVersionId, createdAt])
+}
+
+model ContractVersionText {
+  id                 String       @id @default(cuid())
+  contractVersionId  String       @unique
+  text               String       @db.Text
+  extractedAt        DateTime     @default(now())
+  extractor          TextExtractor
+  status             TextStatus
+  errorMessage       String?      @db.Text
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+
+  @@index([contractVersionId])
 }
 
 // ─── AI & analysis artifacts ───────────────────────────────────────────────

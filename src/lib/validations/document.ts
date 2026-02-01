@@ -21,3 +21,24 @@ export const attachDocumentSchema = z.object({
 });
 
 export type AttachDocumentInput = z.infer<typeof attachDocumentSchema>;
+
+export const extractTextQuerySchema = z.object({
+  force: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+});
+
+export const getTextQuerySchema = z.object({
+  limit: z.coerce.number().int().min(0).max(100_000).optional().default(2000),
+});
+
+export const textResponseSchema = z.object({
+  status: z.enum(["TEXT_READY", "ERROR"]),
+  preview: z.string(),
+  fullText: z.string().optional(),
+  extractedAt: z.string().datetime().optional(),
+  errorMessage: z.string().nullable().optional(),
+  extractor: z.enum(["PDF", "DOCX", "TXT"]).optional(),
+});
+export type TextResponse = z.infer<typeof textResponseSchema>;

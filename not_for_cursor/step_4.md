@@ -2,59 +2,78 @@ Implement STEP 4: Real file upload (Vercel Blob) + text extraction pipeline + in
 
 Context:
 
-- STEP 3 complete: contracts, versions, document metadata, 1 main document per version enforced.
+- STEP 3 complete: contracts, versions, document metadata, 1 main document per version enforced (409 if already exists).
 - Next.js App Router on Vercel.
-- Prisma has Document; extend schema if needed (migrations ok).
+- Prisma has Document; migrations allowed.
 
 Requirements:
 
-1. Storage:
-   - Use Vercel Blob for uploads.
-   - Implement server route to upload file and store:
-     - Document.originalName, mimeType, size
-     - Document.storageKey = blob url or blob key (choose consistent)
-     - Document.source = UPLOAD
-   - Keep 1 main document per contractVersion (409 if exists).
+1. Storage (real upload):
 
-2. Document text model:
-   - Add a table ContractVersionText (or DocumentText) linked to ContractVersion (preferred) with:
-     - text (large), extractedAt, extractor ("pdf"|"docx"|"txt"), status (TEXT_READY|ERROR), errorMessage?
-   - Or store on ContractVersion as fields if schema already supports. Prefer separate table for cleanliness.
+- Use Vercel Blob.
+- Implement POST /api/contracts/:id/versions/:versionId/upload:
+  - Accept a file upload (multipart) OR use @vercel/blob/client upload then confirm server-side.
+  - Enforce RBAC: VIEWER cannot upload.
+  - Enforce workspace scoping (contract/version must belong to current workspace).
+  - Enforce "1 main document per contractVersion": if exists -> return 409.
+  - Persist Document fields:
+    - originalName, mimeType, size
+    - storageKey = blob URL (preferred)
+    - source = UPLOAD
+    - (optional but recommended) ingestionStatus enum: UPLOADED|TEXT_READY|ERROR and lastError.
 
-3. Extraction:
-   - TXT: read buffer -> string
-   - DOCX: use mammoth to extract raw text
-   - PDF: attempt text extraction (pdf-parse or similar). If extraction yields empty, set status ERROR with message "OCR not implemented yet".
-   - Must run server-side only.
-   - Save extracted text and status.
+2. Text model (separate table preferred):
 
-4. API:
-   - POST /api/contracts/:id/versions/:versionId/upload (multipart or upload via blob client + server confirm)
-   - POST /api/contracts/:id/versions/:versionId/extract-text
-   - GET /api/contracts/:id/versions/:versionId/text
+- Add ContractVersionText table linked to ContractVersion with:
+  - contractVersionId (unique)
+  - text (long)
+  - extractedAt
+  - extractor enum: pdf|docx|txt
+  - status enum: TEXT_READY|ERROR
+  - errorMessage optional
 
-5. UI:
-   - On contract detail version card:
-     - Upload file (real)
-     - Show ingestion status
-     - Button "Extract text"
-     - Section "Preview text" (first N chars, expandable)
-   - Handle errors and show them to user.
+3. Extraction (server-side only):
 
-6. Security & quality:
-   - RBAC: VIEWER cannot upload/extract.
-   - Workspace scoping everywhere.
-   - Tests:
-     - uploading second doc returns 409 still
-     - docx extraction returns non-empty text
-     - txt extraction returns exact content
-     - pdf extraction returns status (TEXT_READY or ERROR if no text)
+- POST /api/contracts/:id/versions/:versionId/extract-text:
+  - RBAC: VIEWER cannot extract.
+  - Fetch the main Document for the version, download from storageKey (blob URL).
+  - TXT: buffer -> utf-8 string
+  - DOCX: use mammoth to extract raw text
+  - PDF: attempt text extraction (pdf-parse or similar). If extracted text is empty, save ERROR with message "OCR not implemented yet".
+  - Save ContractVersionText and update Document.ingestionStatus if present.
+  - Idempotency:
+    - If existing ContractVersionText is TEXT_READY, return it without re-extract unless force=true is provided.
+    - If ERROR, allow retry.
+
+- GET /api/contracts/:id/versions/:versionId/text:
+  - Return status + preview + extractedAt + errorMessage (and optionally full text with a safe size limit).
+
+4. UI:
+
+- Update /contracts/[id] version cards:
+  - Upload real file (not metadata-only)
+  - Show ingestion status (UPLOADED/TEXT_READY/ERROR)
+  - Button "Extract text" (disabled unless a document exists; show loading)
+  - Preview extracted text: first N chars with "Show more" (collapsible)
+  - Show extraction errors clearly.
+
+5. Security & quality:
+
+- Workspace scoping everywhere.
+- Zod validation everywhere.
+- No direct Prisma in route handlers (use repositories/services).
+- Tests:
+  - uploading second doc returns 409
+  - txt extraction returns exact content
+  - docx extraction returns non-empty text
+  - pdf extraction returns TEXT_READY or ERROR (if no text layer)
+  - VIEWER cannot upload/extract (403)
 
 Deliverables:
 
-- prisma migration (new table/fields)
-- storage service wrapper
-- API routes + zod
+- prisma migration
+- storage service wrapper (upload + download)
+- API routes + Zod schemas
 - UI updates
 - tests
 - manual verification checklist

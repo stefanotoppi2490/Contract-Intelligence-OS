@@ -20,6 +20,7 @@ export default async function ContractDetailPage({
   const { id } = await params;
   const contract = await contractRepo.getContractDetail(id, workspaceId);
   if (!contract) notFound();
+  const TEXT_PREVIEW_LEN = 500;
   const payload = {
     id: contract.id,
     title: contract.title,
@@ -38,7 +39,18 @@ export default async function ContractDetailPage({
         mimeType: d.mimeType,
         size: d.size,
         storageKey: d.storageKey,
+        ingestionStatus: d.ingestionStatus ?? null,
+        lastError: d.lastError ?? null,
       })),
+      versionText: v.versionText
+        ? {
+            status: v.versionText.status,
+            preview: v.versionText.text.slice(0, TEXT_PREVIEW_LEN),
+            extractedAt: v.versionText.extractedAt.toISOString(),
+            errorMessage: v.versionText.errorMessage ?? null,
+            extractor: v.versionText.extractor,
+          }
+        : null,
     })),
   };
   return (

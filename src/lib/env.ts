@@ -11,6 +11,8 @@ const envSchema = z.object({
   AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required for production").optional(),
   AUTH_GOOGLE_ID: z.string().optional(),
   AUTH_GOOGLE_SECRET: z.string().optional(),
+  // Vercel Blob (optional in dev; required for upload on Vercel)
+  BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
