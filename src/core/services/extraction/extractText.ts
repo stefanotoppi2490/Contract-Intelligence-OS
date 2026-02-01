@@ -1,10 +1,11 @@
 /**
- * Server-side text extraction: TXT, DOCX (mammoth), PDF (pdf-parse).
+ * Server-side text extraction: TXT, DOCX (mammoth), PDF (pdf-parse-debugging-disabled, Node-safe).
  * PDF with no text layer returns ERROR "OCR not implemented yet".
  */
 
+import "server-only";
+
 import mammoth from "mammoth";
-import { PDFParse } from "pdf-parse";
 import type { TextExtractor, TextStatus } from "@prisma/client";
 
 export type ExtractResult =
@@ -60,11 +61,10 @@ async function extractDocx(buffer: Buffer): Promise<ExtractResult> {
 }
 
 async function extractPdf(buffer: Buffer): Promise<ExtractResult> {
-  const parser = new PDFParse({ data: new Uint8Array(buffer) });
   try {
-    const result = await parser.getText();
-    await parser.destroy();
-    const text = (result?.text ?? "").trim();
+    const pdfParse = (await import("pdf-parse-debugging-disabled")).default;
+    const res = await pdfParse(buffer);
+    const text = (res.text ?? "").trim();
     if (text.length === 0) {
       return {
         ok: false,
@@ -75,7 +75,6 @@ async function extractPdf(buffer: Buffer): Promise<ExtractResult> {
     }
     return { ok: true, text, extractor: "PDF", status: "TEXT_READY" };
   } catch (e) {
-    await parser.destroy().catch(() => {});
     const message = e instanceof Error ? e.message : String(e);
     return { ok: false, extractor: "PDF", status: "ERROR", errorMessage: message };
   }

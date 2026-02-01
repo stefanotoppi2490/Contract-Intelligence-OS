@@ -32,20 +32,18 @@ describe("extractText", () => {
       }
     });
 
-    it("pdf extraction returns TEXT_READY or ERROR (e.g. no text layer -> OCR not implemented yet)", async () => {
-      // Minimal PDF: may have no extractable text (ERROR "OCR not implemented yet") or some text (TEXT_READY)
+    it("pdf extraction returns TEXT_READY or ERROR and does not crash (pdf-parse v1, Node-safe)", async () => {
+      // Minimal PDF: pdf-parse v1 may return empty text (ERROR "OCR not implemented yet") or some text (TEXT_READY)
       const minimalPdf = Buffer.from(
         "%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] >>\nendobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000101 00000 n\ntrailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n178\n%%EOF"
       );
       const result = await extractFromBuffer(minimalPdf, "application/pdf");
       expect(result.extractor).toBe("PDF");
+      expect(result.status === "TEXT_READY" || result.status === "ERROR").toBe(true);
       if (result.ok) {
-        expect(result.status).toBe("TEXT_READY");
         expect(typeof result.text).toBe("string");
       } else {
-        expect(result.status).toBe("ERROR");
         expect(result.errorMessage).toBeDefined();
-        // PDFs with no text layer yield "OCR not implemented yet"
         if (result.errorMessage?.includes("OCR")) {
           expect(result.errorMessage).toContain("OCR");
         }
