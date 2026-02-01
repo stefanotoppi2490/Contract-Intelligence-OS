@@ -18,10 +18,8 @@ export default async function ContractDetailPage({
   }
   const workspaceId = session.currentWorkspaceId!;
   const { id } = await params;
-  const contract = await contractRepo.getContractDetail(id);
-  if (!contract || contract.workspaceId !== workspaceId) {
-    notFound();
-  }
+  const contract = await contractRepo.getContractDetail(id, workspaceId);
+  if (!contract) notFound();
   const payload = {
     id: contract.id,
     title: contract.title,

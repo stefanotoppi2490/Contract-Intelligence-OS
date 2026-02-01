@@ -38,22 +38,40 @@ export async function createContractWithV1(
   });
 }
 
+const MAX_VERSION_RETRIES = 3;
+
 /**
- * Create next version for a contract. Uses transaction + max(versionNumber)+1 for race-safety.
+ * Create next version for a contract. Enforces workspace scoping; uses transaction + retry on
+ * unique (contractId, versionNumber) for race-safety.
  */
-export async function createNextVersion(contractId: string) {
-  return prisma.$transaction(async (tx) => {
-    const last = await tx.contractVersion.findFirst({
-      where: { contractId },
-      orderBy: { versionNumber: "desc" },
-      select: { versionNumber: true },
-    });
-    const nextNumber = (last?.versionNumber ?? 0) + 1;
-    return tx.contractVersion.create({
-      data: { contractId, versionNumber: nextNumber },
-      include: { contract: true },
-    });
-  });
+export async function createNextVersion(contractId: string, workspaceId: string) {
+  for (let attempt = 0; attempt < MAX_VERSION_RETRIES; attempt++) {
+    try {
+      return await prisma.$transaction(async (tx) => {
+        const contract = await tx.contract.findFirst({
+          where: { id: contractId, workspaceId },
+          select: { id: true },
+        });
+        if (!contract) return null;
+        const last = await tx.contractVersion.findFirst({
+          where: { contractId },
+          orderBy: { versionNumber: "desc" },
+          select: { versionNumber: true },
+        });
+        const nextNumber = (last?.versionNumber ?? 0) + 1;
+        return tx.contractVersion.create({
+          data: { contractId, versionNumber: nextNumber },
+          include: { contract: true },
+        });
+      });
+    } catch (e: unknown) {
+      const isUniqueViolation =
+        e && typeof e === "object" && "code" in e && (e as { code: string }).code === "P2002";
+      if (isUniqueViolation && attempt < MAX_VERSION_RETRIES - 1) continue;
+      throw e;
+    }
+  }
+  return null;
 }
 
 export function findContractById(id: string) {
@@ -63,10 +81,10 @@ export function findContractById(id: string) {
   });
 }
 
-/** Full detail for contract detail page (versions with documents). */
-export function getContractDetail(id: string) {
+/** Full detail for contract detail page (versions with documents). Workspace-scoped: returns null if contract is not in workspace. */
+export function getContractDetail(id: string, workspaceId: string) {
   return prisma.contract.findUnique({
-    where: { id },
+    where: { id, workspaceId },
     include: {
       counterparty: true,
       versions: {

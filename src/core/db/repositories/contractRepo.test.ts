@@ -60,11 +60,12 @@ describe.runIf(dbAvailable)("contractRepo (requires DATABASE_URL)", () => {
         title: "Test",
         status: "DRAFT",
       });
-      const v2 = await createNextVersion(contract.id);
-      expect(v2.versionNumber).toBe(2);
-      const v3 = await createNextVersion(contract.id);
-      expect(v3.versionNumber).toBe(3);
-      const detail = await getContractDetail(contract.id);
+      const v2 = await createNextVersion(contract.id, WORKSPACE_A);
+      expect(v2).not.toBeNull();
+      expect(v2!.versionNumber).toBe(2);
+      const v3 = await createNextVersion(contract.id, WORKSPACE_A);
+      expect(v3!.versionNumber).toBe(3);
+      const detail = await getContractDetail(contract.id, WORKSPACE_A);
       expect(detail?.versions.map((v) => v.versionNumber)).toEqual([1, 2, 3]);
     });
 
@@ -81,12 +82,14 @@ describe.runIf(dbAvailable)("contractRepo (requires DATABASE_URL)", () => {
         title: "C2",
         status: "DRAFT",
       });
-      const v2c1 = await createNextVersion(c1.id);
-      const v2c2 = await createNextVersion(c2.id);
-      expect(v2c1.versionNumber).toBe(2);
-      expect(v2c2.versionNumber).toBe(2);
-      expect(v2c1.contractId).toBe(c1.id);
-      expect(v2c2.contractId).toBe(c2.id);
+      const v2c1 = await createNextVersion(c1.id, WORKSPACE_A);
+      const v2c2 = await createNextVersion(c2.id, WORKSPACE_A);
+      expect(v2c1).not.toBeNull();
+      expect(v2c2).not.toBeNull();
+      expect(v2c1!.versionNumber).toBe(2);
+      expect(v2c2!.versionNumber).toBe(2);
+      expect(v2c1!.contractId).toBe(c1.id);
+      expect(v2c2!.contractId).toBe(c2.id);
     });
   });
 
@@ -112,6 +115,19 @@ describe.runIf(dbAvailable)("contractRepo (requires DATABASE_URL)", () => {
       expect(listB[0]!.title).toBe("Contract in B");
     });
 
+    it("getContractDetail returns detail when workspace matches", async () => {
+      const contract = await createContractWithV1({
+        workspace: { connect: { id: WORKSPACE_A } },
+        counterparty: { connect: { id: COUNTERPARTY_A } },
+        title: "Only in A",
+        status: "DRAFT",
+      });
+      const detail = await getContractDetail(contract.id, WORKSPACE_A);
+      expect(detail).not.toBeNull();
+      expect(detail!.workspaceId).toBe(WORKSPACE_A);
+      expect(detail!.versions).toHaveLength(1);
+    });
+
     it("getContractDetail returns null for contract in another workspace", async () => {
       const contract = await createContractWithV1({
         workspace: { connect: { id: WORKSPACE_A } },
@@ -119,11 +135,7 @@ describe.runIf(dbAvailable)("contractRepo (requires DATABASE_URL)", () => {
         title: "Only in A",
         status: "DRAFT",
       });
-      const detail = await getContractDetail(contract.id);
-      expect(detail?.workspaceId).toBe(WORKSPACE_A);
-      const fromB = await prisma.contract.findFirst({
-        where: { id: contract.id, workspaceId: WORKSPACE_B },
-      });
+      const fromB = await getContractDetail(contract.id, WORKSPACE_B);
       expect(fromB).toBeNull();
     });
   });

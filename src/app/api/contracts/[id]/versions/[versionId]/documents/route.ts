@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
-import { requireWorkspace, requireRole, AuthError } from "@/core/services/security/rbac";
+import { requireRole, AuthError } from "@/core/services/security/rbac";
 import { attachDocumentSchema } from "@/lib/validations/document";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
-import * as contractVersionRepo from "@/core/db/repositories/contractVersionRepo";
 import * as documentRepo from "@/core/db/repositories/documentRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 
+/** MVP: only one main document per contract version. Returns 409 if version already has a document. */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string; versionId: string }> }
@@ -17,13 +17,20 @@ export async function POST(
     requireRole(session, { allowedRoles: ["OWNER", "ADMIN", "LEGAL", "RISK", "MEMBER"] });
     const workspaceId = session.currentWorkspaceId!;
     const { id: contractId, versionId } = await params;
-    const contract = await contractRepo.findContractById(contractId);
-    if (!contract || contract.workspaceId !== workspaceId) {
+    const contract = await contractRepo.getContractDetail(contractId, workspaceId);
+    if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = await contractVersionRepo.findContractVersionById(versionId);
-    if (!version || version.contractId !== contractId) {
+    const version = contract.versions.find((v) => v.id === versionId);
+    if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
+    }
+    const existingCount = await documentRepo.countDocumentsByContractVersion(versionId);
+    if (existingCount >= 1) {
+      return NextResponse.json(
+        { error: "This version already has a document. Only one main document per version is allowed." },
+        { status: 409 }
+      );
     }
     const body = await req.json();
     const parsed = attachDocumentSchema.safeParse(body);

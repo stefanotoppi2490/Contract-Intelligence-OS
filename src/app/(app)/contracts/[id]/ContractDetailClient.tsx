@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 type Doc = { id: string; originalName: string; mimeType: string | null; size: number | null; storageKey: string | null };
@@ -33,7 +32,6 @@ export function ContractDetailClient({
   payload: Payload;
   canMutate: boolean;
 }) {
-  const [versions, setVersions] = useState(payload.versions);
   const [addingVersion, setAddingVersion] = useState(false);
   const [docForm, setDocForm] = useState<{ versionId: string } | null>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -52,10 +50,6 @@ export function ContractDetailClient({
         setError(data.error ?? "Failed to add version");
         return;
       }
-      setVersions((prev) => [
-        ...prev,
-        { id: data.id, versionNumber: data.versionNumber, documents: [] },
-      ]);
       router.refresh();
     } catch {
       setError("Something went wrong");
@@ -94,28 +88,9 @@ export function ContractDetailClient({
       );
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Failed to attach document");
+        setError(data.error ?? data.message ?? "Failed to attach document");
         return;
       }
-      setVersions((prev) =>
-        prev.map((v) =>
-          v.id === versionId
-            ? {
-                ...v,
-                documents: [
-                  ...v.documents,
-                  {
-                    id: data.id,
-                    originalName: data.originalName,
-                    mimeType: data.mimeType,
-                    size: data.size,
-                    storageKey: data.storageKey,
-                  },
-                ],
-              }
-            : v
-        )
-      );
       setDocForm(null);
       setFile(null);
       router.refresh();
@@ -134,7 +109,7 @@ export function ContractDetailClient({
           <CardTitle>Versions</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {versions.map((v) => (
+          {payload.versions.map((v) => (
             <div key={v.id} className="rounded-lg border p-4 space-y-2">
               <p className="font-medium">Version {v.versionNumber}</p>
               <ul className="text-sm text-muted-foreground">

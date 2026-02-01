@@ -15,8 +15,8 @@ export async function GET(
     requireWorkspace(session);
     const workspaceId = session.currentWorkspaceId!;
     const { id } = await params;
-    const contract = await contractRepo.getContractDetail(id);
-    if (!contract || contract.workspaceId !== workspaceId) {
+    const contract = await contractRepo.getContractDetail(id, workspaceId);
+    if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
     return NextResponse.json(contract);

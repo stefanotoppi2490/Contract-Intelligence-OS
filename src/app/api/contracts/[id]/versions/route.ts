@@ -13,11 +13,14 @@ export async function POST(
     requireRole(session, { allowedRoles: ["OWNER", "ADMIN", "LEGAL", "RISK", "MEMBER"] });
     const workspaceId = session.currentWorkspaceId!;
     const { id: contractId } = await params;
-    const contract = await contractRepo.findContractById(contractId);
-    if (!contract || contract.workspaceId !== workspaceId) {
+    const contract = await contractRepo.getContractDetail(contractId, workspaceId);
+    if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = await contractRepo.createNextVersion(contractId);
+    const version = await contractRepo.createNextVersion(contractId, workspaceId);
+    if (!version) {
+      return NextResponse.json({ error: "Failed to create version" }, { status: 500 });
+    }
     await createAuditEvent({
       workspace: { connect: { id: workspaceId } },
       eventType: "contract_version.created",

@@ -48,6 +48,13 @@ export function findManyDocumentsByContractVersion(
   });
 }
 
+/** Count documents for a version (MVP: one main document per version). */
+export function countDocumentsByContractVersion(contractVersionId: string): Promise<number> {
+  return prisma.document.count({
+    where: { contractVersionId },
+  });
+}
+
 export function updateDocument(id: string, data: Prisma.DocumentUpdateInput) {
   return prisma.document.update({ where: { id }, data });
 }
