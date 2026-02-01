@@ -1,0 +1,301 @@
+// Contract Intelligence OS — Prisma schema (PostgreSQL)
+// STEP 1: Prisma DB Core v1
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ─────────────────────────────────────────────────────────────────
+
+enum MemberRole {
+  OWNER
+  ADMIN
+  MEMBER
+  VIEWER
+}
+
+enum ContractType {
+  NDA
+  MSA
+  SOW
+  SLA
+  OTHER
+}
+
+enum ClauseType {
+  LIABILITY_CAP
+  INDEMNIFICATION
+  TERM
+  TERMINATION
+  DATA_PROCESSING
+  IP_ASSIGNMENT
+  CONFIDENTIALITY
+  GOVERNING_LAW
+  OTHER
+}
+
+enum RuleType {
+  THRESHOLD
+  BOOLEAN
+  WHITELIST
+  CONDITIONAL
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RiskType {
+  LEGAL
+  FINANCIAL
+  OPERATIONAL
+  DATA
+  SECURITY
+}
+
+enum PartyBias {
+  FAVOR_US
+  NEUTRAL
+  FAVOR_COUNTERPARTY
+}
+
+enum ComplianceStatus {
+  COMPLIANT
+  NON_COMPLIANT
+  UNPOLICED
+  REQUIRES_HUMAN_REVIEW
+}
+
+enum RecommendedAction {
+  ACCEPT
+  NEGOTIATE
+  ESCALATE
+}
+
+enum ExceptionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Tenant & Auth ─────────────────────────────────────────────────────────
+
+model Workspace {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships     Membership[]
+  counterparties  Counterparty[]
+  contracts       Contract[]
+  policies        Policy[]
+  riskLedgerEvents RiskLedgerEvent[]
+  auditEvents     AuditEvent[]
+
+  @@index([createdAt])
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  memberships Membership[]
+}
+
+model Membership {
+  id          String     @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        MemberRole
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, userId])
+  @@index([workspaceId, createdAt])
+}
+
+// ─── Business entities ─────────────────────────────────────────────────────
+
+model Counterparty {
+  id          String   @id @default(cuid())
+  workspaceId String
+  name        String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contracts Contract[]
+
+  @@index([workspaceId, createdAt])
+}
+
+model Contract {
+  id             String       @id @default(cuid())
+  workspaceId    String
+  counterpartyId String
+  contractType   ContractType?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  counterparty Counterparty   @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
+  versions    ContractVersion[]
+
+  @@index([workspaceId, createdAt])
+}
+
+model ContractVersion {
+  id             String   @id @default(cuid())
+  contractId     String
+  versionNumber  Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  contract          Contract           @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  documents         Document[]
+  clauseFindings    ClauseFinding[]
+  policyViolations  PolicyViolation[]
+  exceptionRequests ExceptionRequest[]
+
+  @@unique([contractId, versionNumber])
+  @@index([contractId, createdAt])
+}
+
+model Document {
+  id                 String   @id @default(cuid())
+  contractVersionId  String
+  storageKey         String?
+  fileName           String?
+  mimeType           String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+
+  @@index([contractVersionId, createdAt])
+}
+
+// ─── AI & analysis artifacts ───────────────────────────────────────────────
+
+model ClauseFinding {
+  id                String   @id @default(cuid())
+  contractVersionId String
+  clauseType        ClauseType
+  extractedValues   Json?    // structured extracted values
+  evidenceAnchors   Json?    // e.g. [{ startOffset, endOffset, snippet }]
+  confidence        Float?   // 0..1
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([contractVersionId, clauseType])
+  @@index([contractVersionId, createdAt])
+}
+
+model Policy {
+  id               String    @id @default(cuid())
+  workspaceId      String
+  policyId         String    // business identifier (slug)
+  clauseType       ClauseType
+  ruleType         RuleType
+  expectedValue    Json?     // rule-specific expected (threshold, whitelist, etc.)
+  severity         Severity?
+  riskType         RiskType?
+  partyBias        PartyBias?
+  recommendedAction RecommendedAction?
+  allowException   Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  workspace         Workspace          @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  policyViolations  PolicyViolation[]
+  exceptionRequests ExceptionRequest[]
+
+  @@unique([workspaceId, policyId])
+  @@index([workspaceId, clauseType])
+  @@index([workspaceId, createdAt])
+}
+
+model PolicyViolation {
+  id                String   @id @default(cuid())
+  contractVersionId String
+  policyId          String   // FK to Policy.id
+  foundValue        Json?
+  expectedValue     Json?
+  severity          Severity?
+  evidenceAnchors   Json?
+  complianceStatus ComplianceStatus
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  policy          Policy         @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([contractVersionId, policyId])
+  @@index([contractVersionId, createdAt])
+}
+
+// ─── Workflow ──────────────────────────────────────────────────────────────
+
+model ExceptionRequest {
+  id                String          @id @default(cuid())
+  contractVersionId String
+  policyId          String
+  status            ExceptionStatus
+  requestedByUserId String?
+  justification     String?
+  decidedByUserId   String?
+  decidedAt         DateTime?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  policy          Policy         @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  // Partial unique (only one PENDING per contractVersionId+policyId) added in migration SQL
+  @@index([contractVersionId, policyId])
+  @@index([contractVersionId, createdAt])
+}
+
+// ─── Append-only logs (immutable; no update flows) ─────────────────────────
+
+model RiskLedgerEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  eventType   String
+  actorUserId String?
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}
+
+model AuditEvent {
+  id          String   @id @default(cuid())
+  workspaceId String
+  eventType   String
+  actorUserId String?
+  payload     Json
+  createdAt   DateTime @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+}

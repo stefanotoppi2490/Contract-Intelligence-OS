@@ -215,5 +215,6 @@ When implementing:
 1. Propose file plan (list files to create/edit) in 5-12 bullets max.
 2. Implement end-to-end (DB + API + service + minimal UI).
 3. After implementation: provide a short checklist to manually verify the feature in the browser.
+4. Use pnpm
 
 Avoid over-engineering but keep domain boundaries strict.

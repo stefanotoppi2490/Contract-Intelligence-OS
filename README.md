@@ -1,5 +1,20 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Database (Prisma + PostgreSQL)
+
+- **Local Postgres:** Create a database and set `DATABASE_URL` in `.env` (or `.env.local`), e.g.  
+  `DATABASE_URL="postgresql://user:password@localhost:5432/contract_intelligence?schema=public"`
+- **Generate client (no DB required):**  
+  `pnpm prisma generate`
+- **Apply migrations (requires running Postgres):**  
+  `pnpm prisma migrate dev --name init`
+- **Optional — partial unique index** (only one PENDING exception per contractVersion+policy): after the first migration, create a new migration and add:
+  ```sql
+  CREATE UNIQUE INDEX "ExceptionRequest_one_pending_per_version_policy"
+  ON "ExceptionRequest" ("contractVersionId", "policyId")
+  WHERE "status" = 'PENDING';
+  ```
+
 ## Getting Started
 
 First, run the development server:
