@@ -12,6 +12,10 @@ const nav = [
   { href: "/settings/members", label: "Settings (Members)" },
 ];
 
+/**
+ * Protected app layout: requires auth + at least one membership + selected workspace.
+ * Redirects only; never renders setup pages (onboarding/select-workspace live under (setup)).
+ */
 export default async function AppLayout({
   children,
 }: {
@@ -25,23 +29,7 @@ export default async function AppLayout({
     m.findManyMembershipsByUser(session.userId, { include: { workspace: true } })
   );
   if (memberships.length === 0) {
-    return (
-      <div className="min-h-screen flex flex-col">
-        <header className="border-b flex justify-end px-4 py-3">
-          <form
-            action={async () => {
-              "use server";
-              await signOut({ redirectTo: "/signin" });
-            }}
-          >
-            <Button type="submit" variant="outline" size="sm">
-              Sign out
-            </Button>
-          </form>
-        </header>
-        <main className="flex-1 p-4">{children}</main>
-      </div>
-    );
+    redirect("/onboarding");
   }
   if (!session.currentWorkspaceId || !session.role) {
     redirect("/select-workspace");
@@ -63,7 +51,7 @@ export default async function AppLayout({
         </nav>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">
-            {session.email} · {session.currentWorkspaceId ? "Workspace selected" : ""}
+            {session.email} · Workspace selected
           </span>
           <form
             action={async () => {
