@@ -15,6 +15,23 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
   WHERE "status" = 'PENDING';
   ```
 
+## Authentication (NextAuth / Auth.js)
+
+- **Required env (see `.env.example` or below):**
+  - `AUTH_SECRET` — secret for signing cookies/session (e.g. `openssl rand -base64 32`).  
+    Also supported: `NEXTAUTH_SECRET`.
+  - **Google OAuth:**  
+    `AUTH_GOOGLE_ID` and `AUTH_GOOGLE_SECRET` (or `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`).
+- **Setup:** Create a project in [Google Cloud Console](https://console.cloud.google.com/apis/credentials), enable the Google+ API (or Google Identity), create OAuth 2.0 credentials, and set the redirect URI to `https://your-domain/api/auth/callback/google` (or `http://localhost:3000/api/auth/callback/google` for local).
+- **Example `.env.local`:**
+  ```bash
+  DATABASE_URL="postgresql://..."
+  AUTH_SECRET="your-secret-from-openssl-rand-base64-32"
+  AUTH_GOOGLE_ID="your-google-client-id"
+  AUTH_GOOGLE_SECRET="your-google-client-secret"
+  ```
+  Or with legacy names: `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
+
 ## Getting Started
 
 First, run the development server:

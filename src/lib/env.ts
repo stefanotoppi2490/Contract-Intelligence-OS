@@ -7,6 +7,10 @@ import { z } from "zod";
 const envSchema = z.object({
   DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  // NextAuth (Auth.js)
+  AUTH_SECRET: z.string().min(1, "AUTH_SECRET is required for production").optional(),
+  AUTH_GOOGLE_ID: z.string().optional(),
+  AUTH_GOOGLE_SECRET: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;

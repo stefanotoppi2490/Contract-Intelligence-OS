@@ -35,3 +35,9 @@ export function updateMembership(id: string, data: Prisma.MembershipUpdateInput)
 export function deleteMembership(id: string) {
   return prisma.membership.delete({ where: { id } });
 }
+
+export function countAdminsByWorkspace(workspaceId: string): Promise<number> {
+  return prisma.membership.count({
+    where: { workspaceId, role: { in: ["OWNER", "ADMIN"] } },
+  });
+}
