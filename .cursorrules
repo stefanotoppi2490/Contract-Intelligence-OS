@@ -1,0 +1,219 @@
+# .cursorrules — Contract Intelligence OS (Next.js + Prisma + Vercel)
+
+You are Cursor working on an enterprise-grade SaaS named "Contract Intelligence OS".
+Primary goal: ship production-quality features with strong structure, correctness, and deterministic policy evaluation.
+
+## 0) Non-negotiables
+
+- NO pseudo-code, NO TODO placeholders, NO stubs unless explicitly requested. If mocking, mock fully with production-identical interfaces.
+- NO "generic AI advice" features. Risk, severity, and recommended actions MUST be derived from explicit company policies.
+- AI (Gemini 3.5) is ONLY for: extraction, clause mapping, structured value extraction, and evidence anchoring.
+- All enforcement/scoring is deterministic and auditable.
+- Every change must include: updated types, Prisma models, validation schemas, tests (at least smoke/unit), and minimal UI wiring.
+
+## 1) Tech stack & runtime constraints
+
+- Framework: Next.js (App Router) + TypeScript (strict).
+- DB: PostgreSQL.
+- ORM: Prisma.
+- CSS: Tailwindcss
+- Auth: start with NextAuth (Auth.js) or Clerk (choose one when scaffolding; prefer NextAuth if unspecified).
+- Validation: Zod.
+- API: Next.js Route Handlers under `/app/api/**` (REST-ish). Use server actions only for simple form submissions.
+- State/data fetching: Server-first. Use React Query only if needed (avoid if not needed).
+- Styling/UI: Tailwind + shadcn/ui.
+- Deploy: Vercel (serverless). Keep Prisma client instantiation Vercel-safe.
+
+## 2) Project structure (must follow)
+
+Use a feature-based + domain-core structure:
+
+/src
+/app
+/(auth)/_
+/(app)/_
+/api/_
+/core
+/domain
+/contracts
+types.ts
+constants.ts
+/policies
+types.ts
+evaluators.ts
+scoring.ts
+/exceptions
+types.ts
+/audit
+types.ts
+/services
+/ai
+geminiClient.ts
+extractContract.ts
+schemas.ts
+/storage
+fileStore.ts
+/security
+auth.ts
+rbac.ts
+/db
+prisma.ts
+repositories
+contractRepo.ts
+policyRepo.ts
+exceptionRepo.ts
+auditRepo.ts
+/features
+/contracts
+components/_
+server/_
+/policies
+components/_
+server/_
+/exceptions
+components/_
+server/_
+/ledger
+components/_
+server/\*
+/lib
+env.ts
+utils.ts
+
+Rules:
+
+- Domain types live in `/src/core/domain/**`.
+- DB access ONLY via `/src/core/db/repositories/**`.
+- API routes call repositories + domain services; no direct Prisma access in route handlers.
+- UI components only call server actions or API; never Prisma.
+
+## 3) Domain principles
+
+- Contracts are versioned: Contract + ContractVersion.
+- ClauseFinding is produced by AI extraction and stored per ContractVersion.
+- Policies are company-defined standards; violations exist ONLY when a policy is violated.
+- If a clause type has no policy, mark status UNPOLICED (not "risky").
+- Exceptions override policy evaluation for a specific ContractVersion, recorded in Risk Ledger.
+- All actions produce Audit Events.
+
+## 4) Prisma schema requirements (must implement)
+
+Implement Prisma models (minimum):
+
+- Workspace
+- User, Membership (workspace RBAC)
+- Counterparty
+- Contract
+- ContractVersion
+- Document (file metadata)
+- ClauseFinding (stored AI extraction per version; includes evidence anchors)
+- Policy
+- PolicyRule (if you separate rules; otherwise embed in Policy JSON)
+- PolicyViolation (per version)
+- ExceptionRequest
+- ApprovalDecision (or fields on ExceptionRequest)
+- RiskLedgerEvent (append-only)
+- AuditEvent (append-only)
+
+Use enums:
+
+- ContractType
+- ClauseType
+- RuleType (THRESHOLD | BOOLEAN | WHITELIST | CONDITIONAL)
+- Severity (LOW|MEDIUM|HIGH|CRITICAL)
+- RiskType (LEGAL|FINANCIAL|OPERATIONAL|DATA|SECURITY)
+- PartyBias (FAVOR_US|NEUTRAL|FAVOR_COUNTERPARTY)
+- RecommendedAction (ACCEPT|NEGOTIATE|ESCALATE)
+- ComplianceStatus (COMPLIANT|NON_COMPLIANT|UNPOLICED|REQUIRES_HUMAN_REVIEW)
+- ExceptionStatus (PENDING|APPROVED|REJECTED)
+
+Store policy expected values as JSON (Prisma Json) to support multiple rule types.
+All append-only logs (AuditEvent, RiskLedgerEvent) must be immutable by design.
+
+## 5) Policy Engine (must be deterministic)
+
+Implement:
+
+- `evaluatePolicies({ contractType, clauseFindings, meta, policySet, activeExceptions }) -> { violations, complianceByClauseType }`
+- `computeComplianceScore(violations) -> number` using weights:
+  - LOW=1, MEDIUM=3, HIGH=7, CRITICAL=12
+    Score must be explainable (store the weight contributions).
+    Violation must include: policyId, clauseType, foundValue, expectedValue, evidence anchor(s), severity, riskType, partyBias, recommendedAction, complianceStatus.
+
+Rule behaviors:
+
+- THRESHOLD: numeric comparison (>=, <=) and missing-handling
+- BOOLEAN: required presence / forbidden presence
+- WHITELIST: extracted value must be in allowed set
+- CONDITIONAL: evaluate based on meta (dealValue, dataProcessing flag, etc.)
+
+If mapping confidence < configured threshold => REQUIRES_HUMAN_REVIEW, do not auto-violate unless policy explicitly says missing is violation.
+
+## 6) AI integration (Gemini 3.5) rules
+
+- Use Gemini 3.5 ONLY to produce structured extraction.
+- Enforce JSON output via schema; validate with Zod. Reject and retry once if invalid.
+- Provide the AI with the relevant policy excerpts (policyId, clauseType, expected) ONLY to help extraction of found values and evidence anchors. AI must not invent severities.
+- Never store raw prompts with secrets. Store sanitized trace (model, timestamp, input doc id, output json, validation status).
+
+## 7) API design (must implement gradually)
+
+Use REST-like endpoints:
+
+- POST /api/contracts (create contract + upload doc metadata)
+- POST /api/contracts/:id/versions (create version; attach document)
+- POST /api/contracts/:id/analyze (run extraction + evaluation; persist findings/violations/score)
+- GET /api/contracts/:id (details)
+- GET /api/contracts/:id/versions/:vid (analysis result)
+
+- CRUD /api/policies (workspace-scoped)
+- POST /api/exceptions (request)
+- POST /api/exceptions/:id/approve (role-guarded)
+- POST /api/exceptions/:id/reject
+
+- GET /api/ledger (workspace ledger feed)
+- GET /api/audit (admin only)
+
+Always:
+
+- Validate input with Zod.
+- Return typed responses.
+- Enforce workspace RBAC in each handler.
+
+## 8) UI requirements (MVP screens)
+
+MVP must include:
+
+1. Contracts list + upload
+2. Contract detail:
+   - Clause list with: status, policyId, found vs expected, severity (only if policy exists), evidence
+   - Violations tab: grouped by policy
+   - Score + explanation
+   - "Request Exception" only when allowed
+3. Exceptions inbox:
+   - pending approvals
+   - approve/reject + reason
+4. Policy admin:
+   - define policies (basic)
+5. Ledger feed (append-only list)
+
+Use shadcn/ui components and server components where possible.
+
+## 9) Quality gates
+
+Every feature must include:
+
+- Zod schemas for requests/responses
+- Repository functions with tests (at least unit tests for evaluators/scoring)
+- No breaking changes without updating types + DB migrations
+- Meaningful error handling (user-safe messages)
+
+## 10) Working style for Cursor
+
+When implementing:
+
+1. Propose file plan (list files to create/edit) in 5-12 bullets max.
+2. Implement end-to-end (DB + API + service + minimal UI).
+3. After implementation: provide a short checklist to manually verify the feature in the browser.
+
+Avoid over-engineering but keep domain boundaries strict.
