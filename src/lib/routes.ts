@@ -14,6 +14,8 @@ const SETUP_PATHS = new Set(["/onboarding", "/select-workspace"]);
 /** Paths that require auth + workspace (protected app). */
 const APP_PATHS = new Set([
   "/contracts",
+  "/contracts/new",
+  "/counterparties",
   "/policies",
   "/exceptions",
   "/ledger",
@@ -31,6 +33,7 @@ export function getRouteKind(pathname: string): RouteKind {
   if (SETUP_PATHS.has(path)) return "setup";
   if (APP_PATHS.has(path)) return "app";
   if (path.startsWith("/settings/")) return "app";
+  if (path.startsWith("/contracts/")) return "app";
   return "public";
 }
 

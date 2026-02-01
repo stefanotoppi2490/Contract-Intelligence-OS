@@ -9,6 +9,12 @@ export function findCounterpartyById(id: string) {
   return prisma.counterparty.findUnique({ where: { id } });
 }
 
+export function findCounterpartyByWorkspaceAndName(workspaceId: string, name: string) {
+  return prisma.counterparty.findUnique({
+    where: { workspaceId_name: { workspaceId, name } },
+  });
+}
+
 export function findManyCounterparties(args?: Prisma.CounterpartyFindManyArgs) {
   return prisma.counterparty.findMany(args ?? {});
 }

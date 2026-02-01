@@ -20,12 +20,29 @@ enum MemberRole {
   VIEWER
 }
 
+enum CounterpartyType {
+  CUSTOMER
+  VENDOR
+}
+
 enum ContractType {
   NDA
   MSA
   SOW
   SLA
   OTHER
+}
+
+enum ContractStatus {
+  DRAFT
+  IN_REVIEW
+  SIGNED
+  ARCHIVED
+}
+
+enum DocumentSource {
+  UPLOAD
+  INTEGRATION
 }
 
 enum ClauseType {
@@ -174,25 +191,32 @@ model Membership {
 // ─── Business entities ─────────────────────────────────────────────────────
 
 model Counterparty {
-  id          String   @id @default(cuid())
+  id          String           @id @default(cuid())
   workspaceId String
   name        String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  type        CounterpartyType  @default(CUSTOMER)
+  notes       String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   contracts Contract[]
 
+  @@unique([workspaceId, name])
   @@index([workspaceId, createdAt])
 }
 
 model Contract {
-  id             String       @id @default(cuid())
+  id             String         @id @default(cuid())
   workspaceId    String
   counterpartyId String
+  title          String
   contractType   ContractType?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  status         ContractStatus @default(DRAFT)
+  startDate      DateTime?
+  endDate        DateTime?
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   counterparty Counterparty   @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
@@ -219,13 +243,16 @@ model ContractVersion {
 }
 
 model Document {
-  id                 String   @id @default(cuid())
+  id                 String        @id @default(cuid())
   contractVersionId  String
-  storageKey         String?
+  originalName       String
   fileName           String?
   mimeType           String?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  size               Int?
+  storageKey         String?
+  source             DocumentSource @default(UPLOAD)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
 

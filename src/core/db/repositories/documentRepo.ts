@@ -5,6 +5,30 @@ export function createDocument(data: Prisma.DocumentCreateInput) {
   return prisma.document.create({ data });
 }
 
+/** Attach document metadata to a contract version (MVP: no blob, placeholder storageKey). */
+export function attachDocumentToVersion(
+  contractVersionId: string,
+  data: {
+    originalName: string;
+    mimeType?: string | null;
+    size?: number | null;
+    storageKey?: string | null;
+    source?: "UPLOAD" | "INTEGRATION";
+  }
+) {
+  return prisma.document.create({
+    data: {
+      contractVersionId,
+      originalName: data.originalName,
+      fileName: data.originalName,
+      mimeType: data.mimeType ?? undefined,
+      size: data.size ?? undefined,
+      storageKey: data.storageKey ?? undefined,
+      source: data.source ?? "UPLOAD",
+    },
+  });
+}
+
 export function findDocumentById(id: string) {
   return prisma.document.findUnique({ where: { id } });
 }

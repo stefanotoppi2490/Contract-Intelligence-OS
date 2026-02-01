@@ -32,6 +32,24 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
   ```
   Or with legacy names: `NEXTAUTH_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`.
 
+## STEP 3: Contracts core — manual verification checklist
+
+After running migrations for STEP 3 schema (Counterparty type/notes/unique, Contract title/status/dates, Document fields):
+
+1. **Counterparties**
+   - Go to **Counterparties**. Create a counterparty (name, type CUSTOMER/VENDOR, optional notes). Edit and delete. Confirm duplicate name in same workspace is rejected.
+2. **Contracts**
+   - Go to **Contracts** → **New contract**. Select a counterparty (or create one first), set title, type, status. Create. Confirm you are redirected to contract detail and v1 exists.
+   - On contract detail: add a **new version**; confirm version number increments. **Attach document metadata**: choose a file (PDF/DOCX/TXT); confirm metadata is saved with placeholder `storageKey` (e.g. `pending://...`).
+   - Use **Contracts** list filters (status, type, counterparty) and open a contract from the list.
+3. **RBAC**
+   - As a **VIEWER** (e.g. change your membership role in DB or add a test user with VIEWER): confirm you can view contracts and counterparties but cannot create/edit/delete or add versions/documents.
+4. **API**
+   - `GET/POST /api/counterparties`, `PATCH/DELETE /api/counterparties/:id` (workspace-scoped, Zod-validated).
+   - `GET/POST /api/contracts`, `GET/PATCH/DELETE /api/contracts/:id`, `POST /api/contracts/:id/versions`, `POST /api/contracts/:id/versions/:versionId/documents` (workspace-scoped, Zod-validated).
+5. **Tests**
+   - `pnpm test` — RBAC (VIEWER cannot mutate), routes, last-admin. With `DATABASE_URL` set, contract repo tests (versionNumber, workspace scoping) run as well.
+
 ## Getting Started
 
 First, run the development server:
