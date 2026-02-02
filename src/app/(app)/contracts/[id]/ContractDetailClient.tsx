@@ -41,6 +41,16 @@ type Finding = {
   exceptionStatus: string | null;
   isOverridden: boolean;
 };
+type Extraction = {
+  id: string;
+  clauseType: string;
+  extractedValue: unknown;
+  extractedText: string | null;
+  confidence: number;
+  sourceLocation: unknown;
+  extractedBy: string;
+  createdAt: string;
+};
 type Version = {
   id: string;
   versionNumber: number;
@@ -48,6 +58,7 @@ type Version = {
   versionText: VersionText;
   compliances: Compliance[];
   findings: Finding[];
+  extractions?: Extraction[];
 };
 type Payload = {
   id: string;
@@ -204,6 +215,7 @@ export function ContractDetailClient({
   const [uploading, setUploading] = useState(false);
   const [extractingVersionId, setExtractingVersionId] = useState<string | null>(null);
   const [expandedTextVersionId, setExpandedTextVersionId] = useState<string | null>(null);
+  const [expandedExtractionsVersionId, setExpandedExtractionsVersionId] = useState<string | null>(null);
   const [fullTextCache, setFullTextCache] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [analyzingVersionId, setAnalyzingVersionId] = useState<string | null>(null);
@@ -530,6 +542,60 @@ export function ContractDetailClient({
                           ))}
                         </ul>
                       </div>
+                    )}
+                  </div>
+                )}
+
+                {/* AI-extracted clauses (preview) — STEP 8A */}
+                {v.extractions && v.extractions.length > 0 && (
+                  <div className="rounded border border-dashed border-slate-300 bg-slate-50/50 dark:bg-slate-900/20 p-3 space-y-2">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-auto py-1 text-sm font-medium"
+                      onClick={() =>
+                        setExpandedExtractionsVersionId((id) => (id === v.id ? null : v.id))
+                      }
+                    >
+                      {expandedExtractionsVersionId === v.id ? "▼" : "▶"} AI-extracted clauses (preview)
+                    </Button>
+                    {expandedExtractionsVersionId === v.id && (
+                      <ul className="space-y-3 list-none pl-0 text-sm">
+                        {v.extractions.map((e) => (
+                          <li key={e.id} className="rounded border bg-background p-3 space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-mono font-medium">{e.clauseType}</span>
+                              <span
+                                className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                                  e.confidence >= 0.7
+                                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                    : e.confidence >= 0.4
+                                      ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                                      : "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300"
+                                }`}
+                              >
+                                {(e.confidence * 100).toFixed(0)}% confidence
+                              </span>
+                            </div>
+                            {e.extractedValue != null && (
+                              <div>
+                                <span className="text-muted-foreground text-xs">Value:</span>
+                                <pre className="mt-0.5 rounded bg-muted p-2 text-xs overflow-x-auto whitespace-pre-wrap break-all">
+                                  {JSON.stringify(e.extractedValue, null, 2)}
+                                </pre>
+                              </div>
+                            )}
+                            {e.extractedText && (
+                              <div>
+                                <span className="text-muted-foreground text-xs">Excerpt:</span>
+                                <blockquote className="mt-0.5 pl-2 border-l-2 border-muted-foreground/30 text-muted-foreground whitespace-pre-wrap break-words">
+                                  {e.extractedText}
+                                </blockquote>
+                              </div>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
                     )}
                   </div>
                 )}

@@ -197,6 +197,7 @@ model Workspace {
   ledgerEvents       LedgerEvent[]
   exceptionRequests  ExceptionRequest[]
   auditEvents        AuditEvent[]
+  clauseExtractions  ClauseExtraction[]   // STEP 8A
 
   @@index([createdAt])
 }
@@ -315,6 +316,7 @@ model ContractVersion {
   documents          Document[]
   versionText        ContractVersionText?
   clauseFindings     ClauseFinding[]
+  clauseExtractions  ClauseExtraction[]    // STEP 8A: neutral AI extraction (no policy)
   policyViolations   PolicyViolation[]
   exceptionRequests  ExceptionRequest[]
   contractCompliance ContractCompliance[]
@@ -356,6 +358,29 @@ model ContractVersionText {
   contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
 
   @@index([contractVersionId])
+}
+
+// ─── STEP 8A: neutral AI clause extraction (no compliance) ───────────────────
+
+model ClauseExtraction {
+  id                 String         @id @default(cuid())
+  workspaceId        String
+  contractId         String
+  contractVersionId   String
+  clauseType         ClauseTaxonomy
+  extractedValue     Json?
+  extractedText      String?        @db.Text
+  confidence         Float          // 0–1
+  sourceLocation     Json?          // optional: page, paragraph, offsets
+  extractedBy        String         @default("AI")
+  createdAt          DateTime       @default(now())
+
+  workspace        Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contractVersion  ContractVersion  @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+
+  @@unique([contractVersionId, clauseType])
+  @@index([contractVersionId])
+  @@index([clauseType])
 }
 
 // ─── AI & analysis artifacts (STEP 5A: policy engine findings) ───────────────

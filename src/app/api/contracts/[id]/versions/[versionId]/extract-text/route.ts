@@ -5,6 +5,7 @@ import { extractTextQuerySchema } from "@/lib/validations/document";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as documentRepo from "@/core/db/repositories/documentRepo";
 import * as contractVersionTextRepo from "@/core/db/repositories/contractVersionTextRepo";
+import * as clauseExtractionRepo from "@/core/db/repositories/clauseExtractionRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { downloadBlob } from "@/core/services/storage/blobStore";
@@ -12,6 +13,7 @@ import {
   extractFromBuffer,
   getExtractorFromMime,
 } from "@/core/services/extraction/extractText";
+import { extractClausesNeutral } from "@/core/services/extraction/aiClauseExtractor";
 
 const PREVIEW_LENGTH = 500;
 
@@ -126,6 +128,28 @@ export async function POST(
         contractVersionId: versionId,
         metadata: { extractor: result.extractor, status: "TEXT_READY" },
       });
+
+      // STEP 8A: Neutral AI clause extraction (non-blocking)
+      try {
+        const extractions = await extractClausesNeutral(result.text);
+        if (extractions.length > 0) {
+          await clauseExtractionRepo.replaceExtractionsForVersion(
+            workspaceId,
+            contractId,
+            versionId,
+            extractions.map((e) => ({
+              clauseType: e.clauseType,
+              extractedValue: e.extractedValue,
+              extractedText: e.extractedText,
+              confidence: e.confidence,
+              sourceLocation: e.sourceLocation ?? undefined,
+            }))
+          );
+        }
+      } catch (e) {
+        console.error("[extract-text] AI clause extraction failed:", e);
+      }
+
       return NextResponse.json({
         status: "TEXT_READY",
         preview: result.text.slice(0, PREVIEW_LENGTH),

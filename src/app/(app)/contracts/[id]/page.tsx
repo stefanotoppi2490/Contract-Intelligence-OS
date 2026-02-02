@@ -113,6 +113,16 @@ export default async function ContractDetailPage({
           };
         });
       })(),
+      extractions: (v.clauseExtractions ?? []).map((e) => ({
+        id: e.id,
+        clauseType: e.clauseType,
+        extractedValue: e.extractedValue,
+        extractedText: e.extractedText ?? null,
+        confidence: e.confidence,
+        sourceLocation: e.sourceLocation,
+        extractedBy: e.extractedBy,
+        createdAt: e.createdAt.toISOString(),
+      })),
     })),
   };
   return (

@@ -94,6 +94,7 @@ export function getContractDetail(id: string, workspaceId: string) {
           versionText: true,
           contractCompliance: { include: { policy: true } },
           clauseFindings: { include: { rule: true } },
+          clauseExtractions: true,
           exceptionRequests: { select: { id: true, clauseFindingId: true, status: true } },
         },
       },
