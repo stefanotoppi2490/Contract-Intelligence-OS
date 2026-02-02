@@ -11,12 +11,14 @@ vi.mock("@/core/services/security/rbac", async (importOriginal) => {
 vi.mock("@/core/db/repositories/contractRepo");
 vi.mock("@/core/db/repositories/clauseFindingRepo");
 vi.mock("@/core/db/repositories/contractComplianceRepo");
+vi.mock("@/core/db/repositories/exceptionRepo");
 
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireWorkspace, AuthError } from "@/core/services/security/rbac";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as contractComplianceRepo from "@/core/db/repositories/contractComplianceRepo";
 import * as clauseFindingRepo from "@/core/db/repositories/clauseFindingRepo";
+import * as exceptionRepo from "@/core/db/repositories/exceptionRepo";
 
 describe("GET /api/contracts/[id]/versions/[versionId]/compliance", () => {
   const workspaceId = "ws-1";
@@ -54,8 +56,10 @@ describe("GET /api/contracts/[id]/versions/[versionId]/compliance", () => {
         severity: "HIGH",
         riskType: "LEGAL",
         recommendation: "Clause required by policy is missing or not detected.",
+        rule: { policyId: "p-1", weight: 5 },
       },
     ] as Awaited<ReturnType<typeof clauseFindingRepo.findManyClauseFindingsByContractVersion>>);
+    vi.mocked(exceptionRepo.findApprovedExceptionsByContractVersion).mockResolvedValue([]);
   });
 
   it("returns 403 when no workspace", async () => {
@@ -85,8 +89,36 @@ describe("GET /api/contracts/[id]/versions/[versionId]/compliance", () => {
     expect(json.contractVersionId).toBe(versionId);
     expect(json.compliances).toHaveLength(1);
     expect(json.compliances[0].policyName).toBe("Standard Policy");
-    expect(json.compliances[0].score).toBe(85);
+    expect(json.compliances[0].rawScore).toBe(85);
+    expect(json.compliances[0].effectiveScore).toBe(85);
     expect(json.findings).toHaveLength(1);
     expect(json.findings[0].complianceStatus).toBe("VIOLATION");
+    expect(json.findings[0].isOverridden).toBe(false);
+  });
+
+  it("returns effectiveScore increased when approved exception overrides finding", async () => {
+    vi.mocked(contractComplianceRepo.findManyContractCompliancesByContractVersion).mockResolvedValue([
+      {
+        id: "cc-1",
+        contractVersionId: versionId,
+        policyId: "p-1",
+        score: 80,
+        status: "NEEDS_REVIEW",
+        policy: { id: "p-1", name: "Standard Policy" },
+      },
+    ] as Awaited<ReturnType<typeof contractComplianceRepo.findManyContractCompliancesByContractVersion>>);
+    vi.mocked(exceptionRepo.findApprovedExceptionsByContractVersion).mockResolvedValue([
+      { id: "ex-1", clauseFindingId: "f-1" },
+    ] as Awaited<ReturnType<typeof exceptionRepo.findApprovedExceptionsByContractVersion>>);
+    const res = await GET(new Request("http://x"), {
+      params: Promise.resolve({ id: contractId, versionId }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.compliances[0].rawScore).toBe(80);
+    expect(json.compliances[0].effectiveScore).toBe(85);
+    expect(json.findings[0].isOverridden).toBe(true);
+    expect(json.findings[0].exceptionId).toBe("ex-1");
+    expect(json.findings[0].exceptionStatus).toBe("APPROVED");
   });
 });

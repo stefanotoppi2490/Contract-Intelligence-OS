@@ -9,6 +9,7 @@ vi.mock("@/core/services/security/rbac", async (importOriginal) => {
   return { ...actual, requireWorkspace: vi.fn(), requireRole: vi.fn() };
 });
 vi.mock("@/core/db/repositories/policyRepo");
+vi.mock("@/core/services/ledger/ledgerService", () => ({ recordEvent: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/core/services/policyEngine/defaultPolicyRules", () => ({
   seedDefaultPolicyRules: vi.fn(() => Promise.resolve(7)),
 }));

@@ -5,6 +5,7 @@ import { ALLOWED_MIME_TYPES } from "@/lib/validations/document";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as documentRepo from "@/core/db/repositories/documentRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
+import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { uploadBlob } from "@/core/services/storage/blobStore";
 
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4.5 MB Vercel serverless limit; use 4 MB to be safe
@@ -88,6 +89,16 @@ export async function POST(
         mimeType: doc.mimeType,
         size: doc.size,
       },
+    });
+    await recordEvent({
+      workspaceId,
+      actorUserId: session.userId,
+      type: "CONTRACT_UPLOADED",
+      entityType: "Document",
+      entityId: doc.id,
+      contractId,
+      contractVersionId: versionId,
+      metadata: { fileName: doc.originalName, mimeType: doc.mimeType, size: doc.size },
     });
     return NextResponse.json({
       id: doc.id,

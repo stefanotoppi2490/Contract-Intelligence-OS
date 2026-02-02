@@ -3,6 +3,7 @@ import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, requireWorkspace, AuthError } from "@/core/services/security/rbac";
 import { createPolicySchema } from "@/lib/validations/policy";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
+import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { seedDefaultPolicyRules } from "@/core/services/policyEngine/defaultPolicyRules";
 
 /** GET: list policies with rules for current workspace. Any role with workspace. */
@@ -64,6 +65,15 @@ export async function POST(req: Request) {
     if (seedDefaults !== false) {
       rulesCount = await seedDefaultPolicyRules(policy.id);
     }
+    await recordEvent({
+      workspaceId,
+      actorUserId: session.userId,
+      type: "POLICY_CREATED",
+      entityType: "Policy",
+      entityId: policy.id,
+      policyId: policy.id,
+      metadata: { name: policy.name, rulesCount },
+    });
     return NextResponse.json({
       id: policy.id,
       name: policy.name,

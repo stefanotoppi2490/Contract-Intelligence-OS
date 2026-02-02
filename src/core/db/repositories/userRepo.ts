@@ -17,6 +17,14 @@ export function findManyUsers(args?: Prisma.UserFindManyArgs) {
   return prisma.user.findMany(args ?? {});
 }
 
+export function findManyUsersByIds(ids: string[]) {
+  if (ids.length === 0) return Promise.resolve([]);
+  return prisma.user.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, email: true, name: true },
+  });
+}
+
 export function updateUser(id: string, data: Prisma.UserUpdateInput) {
   return prisma.user.update({ where: { id }, data });
 }

@@ -13,6 +13,7 @@ vi.mock("@/core/db/repositories/policyRepo");
 vi.mock("@/core/db/repositories/auditRepo", () => ({
   createAuditEvent: vi.fn(() => Promise.resolve()),
 }));
+vi.mock("@/core/services/ledger/ledgerService", () => ({ recordEvent: vi.fn().mockResolvedValue(undefined) }));
 vi.mock("@/core/services/policyEngine/policyEngine", () => ({
   analyze: vi.fn(() =>
     Promise.resolve({

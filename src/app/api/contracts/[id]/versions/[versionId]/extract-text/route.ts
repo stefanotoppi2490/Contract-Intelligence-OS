@@ -6,6 +6,7 @@ import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as documentRepo from "@/core/db/repositories/documentRepo";
 import * as contractVersionTextRepo from "@/core/db/repositories/contractVersionTextRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
+import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { downloadBlob } from "@/core/services/storage/blobStore";
 import {
   extractFromBuffer,
@@ -79,6 +80,16 @@ export async function POST(
         ingestionStatus: "ERROR",
         lastError: errorMessage,
       });
+      await recordEvent({
+        workspaceId,
+        actorUserId: session.userId,
+        type: "TEXT_EXTRACTED",
+        entityType: "ContractVersionText",
+        entityId: textRecord.id,
+        contractId,
+        contractVersionId: versionId,
+        metadata: { extractor: textRecord.extractor, status: "ERROR", errorMessage },
+      });
       return NextResponse.json(
         { status: "ERROR", errorMessage, id: textRecord.id },
         { status: 200 }
@@ -104,6 +115,16 @@ export async function POST(
         eventType: "text.extracted",
         actorUserId: session.userId,
         payload: { contractId, versionId, extractor: result.extractor },
+      });
+      await recordEvent({
+        workspaceId,
+        actorUserId: session.userId,
+        type: "TEXT_EXTRACTED",
+        entityType: "ContractVersionText",
+        entityId: textRecord.id,
+        contractId,
+        contractVersionId: versionId,
+        metadata: { extractor: result.extractor, status: "TEXT_READY" },
       });
       return NextResponse.json({
         status: "TEXT_READY",

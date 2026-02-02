@@ -5,6 +5,7 @@ import { analyzeBodySchema } from "@/lib/validations/compliance";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
+import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { analyze } from "@/core/services/policyEngine/policyEngine";
 
 /** POST: run deterministic policy analysis for this version + policy. RBAC: LEGAL/RISK/ADMIN. */
@@ -50,6 +51,17 @@ export async function POST(
         status: result.status,
         violationsCount: result.violationsCount,
       },
+    });
+    await recordEvent({
+      workspaceId,
+      actorUserId: session.userId,
+      type: "ANALYSIS_RUN",
+      entityType: "ContractCompliance",
+      entityId: versionId,
+      contractId,
+      contractVersionId: versionId,
+      policyId: policy.id,
+      metadata: { policyId: policy.id, rawScore: result.score, violationsCount: result.violationsCount },
     });
     return NextResponse.json(result);
   } catch (e) {

@@ -5,6 +5,7 @@ import { requireRole, requireWorkspace, AuthError } from "@/core/services/securi
 import { createPolicyRuleSchema } from "@/lib/validations/policy";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
+import { recordEvent } from "@/core/services/ledger/ledgerService";
 
 /** POST: create a rule for the policy. RBAC: LEGAL/RISK/ADMIN. Workspace-scoped. */
 export async function POST(
@@ -44,6 +45,15 @@ export async function POST(
       recommendation: data.recommendation,
     } as Prisma.PolicyRuleCreateInput;
     const rule = await policyRuleRepo.createPolicyRule(createData);
+    await recordEvent({
+      workspaceId,
+      actorUserId: session.userId,
+      type: "POLICY_RULE_CREATED",
+      entityType: "PolicyRule",
+      entityId: rule.id,
+      policyId: policyId,
+      metadata: { clauseType: rule.clauseType, ruleType: rule.ruleType },
+    });
     return NextResponse.json({
       id: rule.id,
       clauseType: rule.clauseType,

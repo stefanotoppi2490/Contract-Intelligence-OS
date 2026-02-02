@@ -5,6 +5,7 @@ import { requireRole, requireWorkspace, AuthError } from "@/core/services/securi
 import { updatePolicyRuleSchema } from "@/lib/validations/policy";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
+import { recordEvent } from "@/core/services/ledger/ledgerService";
 
 /** PATCH: update a rule. RBAC: LEGAL/RISK/ADMIN. Workspace-scoped. */
 export async function PATCH(
@@ -50,6 +51,15 @@ export async function PATCH(
     };
 
     const updated = await policyRuleRepo.updatePolicyRule(ruleId, updateData);
+    await recordEvent({
+      workspaceId,
+      actorUserId: session.userId,
+      type: "POLICY_RULE_UPDATED",
+      entityType: "PolicyRule",
+      entityId: ruleId,
+      policyId,
+      metadata: { clauseType: updated.clauseType, ruleType: updated.ruleType },
+    });
     const payload = {
       id: updated.id,
       clauseType: updated.clauseType,
@@ -89,6 +99,15 @@ export async function DELETE(
       return NextResponse.json({ error: "Rule not found" }, { status: 404 });
     }
     await policyRuleRepo.deletePolicyRule(ruleId);
+    await recordEvent({
+      workspaceId,
+      actorUserId: session.userId,
+      type: "POLICY_RULE_DELETED",
+      entityType: "PolicyRule",
+      entityId: ruleId,
+      policyId,
+      metadata: { clauseType: rule.clauseType, ruleType: rule.ruleType },
+    });
     return NextResponse.json({ deleted: true, id: ruleId });
   } catch (e) {
     if (e instanceof AuthError) {

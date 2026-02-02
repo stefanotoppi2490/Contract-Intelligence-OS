@@ -57,26 +57,62 @@ export default async function ContractDetailPage({
             extractor: v.versionText.extractor,
           }
         : null,
-      compliances: v.contractCompliance.map((c) => ({
-        policyId: c.policyId,
-        policyName: c.policy.name,
-        score: c.score,
-        status: c.status,
-      })),
-      findings: v.clauseFindings.map((f) => ({
-        id: f.id,
-        clauseType: f.clauseType,
-        ruleId: f.ruleId,
-        complianceStatus: f.complianceStatus,
-        severity: f.severity,
-        riskType: f.riskType,
-        recommendation: f.recommendation,
-        foundText: f.foundText ?? null,
-        foundValue: f.foundValue ?? null,
-        confidence: f.confidence ?? null,
-        parseNotes: f.parseNotes ?? null,
-        expectedValue: f.rule?.expectedValue ?? null,
-      })),
+      compliances: (() => {
+        const approvedByFindingId = new Map<string, { id: string }>();
+        for (const ex of v.exceptionRequests) {
+          if (ex.clauseFindingId && ex.status === "APPROVED") approvedByFindingId.set(ex.clauseFindingId, { id: ex.id });
+        }
+        const ruleWeightByFindingId = new Map<string, number>();
+        for (const f of v.clauseFindings) {
+          const weight = (f.rule as { weight?: number })?.weight ?? 1;
+          ruleWeightByFindingId.set(f.id, weight);
+        }
+        return v.contractCompliance.map((c) => {
+          let effectiveScore = c.score;
+          for (const f of v.clauseFindings) {
+            const policyId = (f.rule as { policyId?: string })?.policyId;
+            if (policyId !== c.policyId) continue;
+            if (f.complianceStatus !== "VIOLATION" && f.complianceStatus !== "UNCLEAR") continue;
+            if (!approvedByFindingId.has(f.id)) continue;
+            const weight = ruleWeightByFindingId.get(f.id) ?? 1;
+            effectiveScore = Math.min(100, effectiveScore + weight);
+          }
+          return {
+            policyId: c.policyId,
+            policyName: c.policy.name,
+            score: c.score,
+            effectiveScore,
+            status: c.status,
+          };
+        });
+      })(),
+      findings: (() => {
+        const findingToException = new Map<string, { id: string; status: string }>();
+        for (const ex of v.exceptionRequests) {
+          if (ex.clauseFindingId) findingToException.set(ex.clauseFindingId, { id: ex.id, status: ex.status });
+        }
+        return v.clauseFindings.map((f) => {
+          const ex = findingToException.get(f.id);
+          const isOverridden = ex?.status === "APPROVED" && (f.complianceStatus === "VIOLATION" || f.complianceStatus === "UNCLEAR");
+          return {
+            id: f.id,
+            clauseType: f.clauseType,
+            ruleId: f.ruleId,
+            complianceStatus: f.complianceStatus,
+            severity: f.severity,
+            riskType: f.riskType,
+            recommendation: f.recommendation,
+            foundText: f.foundText ?? null,
+            foundValue: f.foundValue ?? null,
+            confidence: f.confidence ?? null,
+            parseNotes: f.parseNotes ?? null,
+            expectedValue: f.rule?.expectedValue ?? null,
+            exceptionId: ex?.id ?? null,
+            exceptionStatus: ex?.status ?? null,
+            isOverridden: isOverridden ?? false,
+          };
+        });
+      })(),
     })),
   };
   return (

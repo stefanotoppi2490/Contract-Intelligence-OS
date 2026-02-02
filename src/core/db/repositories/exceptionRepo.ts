@@ -1,5 +1,8 @@
 import { prisma } from "../prisma";
+import type { ExceptionStatus } from "@prisma/client";
 import type { Prisma } from "@prisma/client";
+
+const ACTIVE_EXCEPTION_STATUSES: ExceptionStatus[] = ["REQUESTED", "APPROVED"];
 
 export function createExceptionRequest(data: Prisma.ExceptionRequestCreateInput) {
   return prisma.exceptionRequest.create({ data });
@@ -8,26 +11,78 @@ export function createExceptionRequest(data: Prisma.ExceptionRequestCreateInput)
 export function findExceptionRequestById(id: string) {
   return prisma.exceptionRequest.findUnique({
     where: { id },
-    include: { policy: true, contractVersion: true },
+    include: {
+      policy: true,
+      contractVersion: { include: { contract: true } },
+      clauseFinding: { include: { rule: true } },
+      comments: true,
+    },
   });
 }
 
-export function findPendingExceptionByVersionAndPolicy(
-  contractVersionId: string,
-  policyId: string
-) {
+export function findExceptionRequestByIdAndWorkspace(id: string, workspaceId: string) {
+  return prisma.exceptionRequest.findFirst({
+    where: { id, workspaceId },
+    include: {
+      policy: true,
+      contractVersion: { include: { contract: true } },
+      clauseFinding: { include: { rule: true } },
+      comments: true,
+    },
+  });
+}
+
+/** Active = REQUESTED or APPROVED. Only one per clauseFindingId. */
+export function findActiveExceptionByClauseFindingId(clauseFindingId: string) {
   return prisma.exceptionRequest.findFirst({
     where: {
-      contractVersionId,
-      policyId,
-      status: "PENDING",
+      clauseFindingId,
+      status: { in: ACTIVE_EXCEPTION_STATUSES },
     },
     include: { policy: true },
   });
 }
 
+/** One REQUESTED exception per (contractVersionId, policyId, title) when clauseFindingId is null. */
+export function findRequestedExceptionByVersionPolicyTitle(
+  contractVersionId: string,
+  policyId: string,
+  title: string
+) {
+  return prisma.exceptionRequest.findFirst({
+    where: {
+      contractVersionId,
+      policyId,
+      title: { equals: title, mode: "insensitive" },
+      status: "REQUESTED",
+      clauseFindingId: null,
+    },
+  });
+}
+
 export function findManyExceptionRequests(args?: Prisma.ExceptionRequestFindManyArgs) {
   return prisma.exceptionRequest.findMany(args ?? {});
+}
+
+export function findManyExceptionRequestsByWorkspace(
+  workspaceId: string,
+  filters?: { status?: ExceptionStatus; contractId?: string; policyId?: string },
+  args?: Omit<Prisma.ExceptionRequestFindManyArgs, "where">
+) {
+  const where: Prisma.ExceptionRequestWhereInput = { workspaceId };
+  if (filters?.status) where.status = filters.status;
+  if (filters?.contractId) where.contractId = filters.contractId;
+  if (filters?.policyId) where.policyId = filters.policyId;
+  return prisma.exceptionRequest.findMany({
+    ...args,
+    where,
+    orderBy: args?.orderBy ?? { createdAt: "desc" },
+    include: args?.include ?? {
+      contractVersion: { include: { contract: true } },
+      policy: true,
+      clauseFinding: { include: { rule: true } },
+    },
+  });
 }
 
 export function findManyExceptionRequestsByContractVersion(
@@ -38,17 +93,19 @@ export function findManyExceptionRequestsByContractVersion(
     ...args,
     where: { contractVersionId },
     orderBy: args?.orderBy ?? { createdAt: "desc" },
+    include: args?.include ?? { policy: true, clauseFinding: true },
   });
 }
 
-export function findManyPendingExceptionsByWorkspace(workspaceId: string) {
+/** Approved exceptions for a version that are linked to a clause finding (for compliance override). */
+export function findApprovedExceptionsByContractVersion(contractVersionId: string) {
   return prisma.exceptionRequest.findMany({
     where: {
-      status: "PENDING",
-      contractVersion: { contract: { workspaceId } },
+      contractVersionId,
+      status: "APPROVED",
+      clauseFindingId: { not: null },
     },
-    include: { policy: true, contractVersion: { include: { contract: true } } },
-    orderBy: { createdAt: "desc" },
+    select: { id: true, clauseFindingId: true },
   });
 }
 
@@ -58,4 +115,8 @@ export function updateExceptionRequest(id: string, data: Prisma.ExceptionRequest
 
 export function deleteExceptionRequest(id: string) {
   return prisma.exceptionRequest.delete({ where: { id } });
+}
+
+export function createExceptionComment(data: Prisma.ExceptionCommentCreateInput) {
+  return prisma.exceptionComment.create({ data });
 }

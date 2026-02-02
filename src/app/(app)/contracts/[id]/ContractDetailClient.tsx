@@ -23,7 +23,7 @@ type VersionText = {
   errorMessage: string | null;
   extractor: string;
 } | null;
-type Compliance = { policyId: string; policyName: string; score: number; status: string };
+type Compliance = { policyId: string; policyName: string; score: number; effectiveScore?: number; status: string };
 type Finding = {
   id: string;
   clauseType: string;
@@ -37,6 +37,9 @@ type Finding = {
   confidence: number | null;
   parseNotes: string | null;
   expectedValue: unknown;
+  exceptionId: string | null;
+  exceptionStatus: string | null;
+  isOverridden: boolean;
 };
 type Version = {
   id: string;
@@ -67,7 +70,19 @@ function formatValue(v: unknown): string {
   return JSON.stringify(v);
 }
 
-function FindingRow({ finding: f }: { finding: Finding }) {
+function FindingRow({
+  finding: f,
+  versionId,
+  contractId,
+  canRequestException,
+  onRequestException,
+}: {
+  finding: Finding;
+  versionId: string;
+  contractId: string;
+  canRequestException: boolean;
+  onRequestException: (findingId: string) => void;
+}) {
   const [showExcerpt, setShowExcerpt] = useState(false);
   const statusColor =
     f.complianceStatus === "VIOLATION"
@@ -77,11 +92,29 @@ function FindingRow({ finding: f }: { finding: Finding }) {
         : f.complianceStatus === "UNCLEAR"
           ? "text-amber-600 dark:text-amber-400"
           : "";
+  const hasActiveException = f.exceptionId && (f.exceptionStatus === "REQUESTED" || f.exceptionStatus === "APPROVED");
+  const showRequestButton =
+    canRequestException &&
+    (f.complianceStatus === "VIOLATION" || f.complianceStatus === "UNCLEAR") &&
+    !hasActiveException;
   return (
     <li className="rounded border p-2 space-y-1">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs">{f.clauseType}</span>
         <span className={statusColor}>{f.complianceStatus}</span>
+        {f.isOverridden && (
+          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
+            Overridden
+          </span>
+        )}
+        {hasActiveException && f.exceptionId && (
+          <Link
+            href={`/exceptions/${f.exceptionId}`}
+            className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground hover:underline"
+          >
+            Exception: {f.exceptionStatus}
+          </Link>
+        )}
         {f.confidence != null && (
           <span className="text-muted-foreground text-xs">
             confidence {(f.confidence * 100).toFixed(0)}%
@@ -118,6 +151,18 @@ function FindingRow({ finding: f }: { finding: Finding }) {
       )}
       {f.recommendation && (
         <p className="text-xs text-muted-foreground">{f.recommendation}</p>
+      )}
+      {showRequestButton && (
+        <div className="pt-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs"
+            onClick={() => onRequestException(f.id)}
+          >
+            Request exception
+          </Button>
+        </div>
       )}
     </li>
   );
@@ -163,7 +208,53 @@ export function ContractDetailClient({
   const [error, setError] = useState<string | null>(null);
   const [analyzingVersionId, setAnalyzingVersionId] = useState<string | null>(null);
   const [selectedPolicyByVersion, setSelectedPolicyByVersion] = useState<Record<string, string>>({});
+  const [exceptionModal, setExceptionModal] = useState<{ versionId: string; findingId: string } | null>(null);
+  const [exceptionTitle, setExceptionTitle] = useState("");
+  const [exceptionJustification, setExceptionJustification] = useState("");
+  const [exceptionSubmitting, setExceptionSubmitting] = useState(false);
   const router = useRouter();
+
+  function openRequestExceptionModal(findingId: string) {
+    const version = payload.versions.find((v) => v.findings.some((f) => f.id === findingId));
+    if (version) setExceptionModal({ versionId: version.id, findingId });
+    setExceptionTitle("");
+    setExceptionJustification("");
+  }
+
+  async function submitRequestException() {
+    if (!exceptionModal || !exceptionTitle.trim() || !exceptionJustification.trim()) return;
+    if (!canAnalyze) return;
+    setError(null);
+    setExceptionSubmitting(true);
+    try {
+      const res = await fetch(
+        `/api/contracts/${contractId}/versions/${exceptionModal.versionId}/exceptions`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            clauseFindingId: exceptionModal.findingId,
+            title: exceptionTitle.trim(),
+            justification: exceptionJustification.trim(),
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? (res.status === 409 ? "An exception already exists for this finding." : "Request failed"));
+        if (res.status === 409 && data.existingExceptionId) {
+          router.push(`/exceptions/${data.existingExceptionId}`);
+        }
+        return;
+      }
+      setExceptionModal(null);
+      router.refresh();
+    } catch {
+      setError("Request failed");
+    } finally {
+      setExceptionSubmitting(false);
+    }
+  }
 
   async function addVersion() {
     if (!canMutate) return;
@@ -401,7 +492,13 @@ export function ContractDetailClient({
                         {v.compliances.map((c) => (
                           <li key={c.policyId}>
                             <span className="font-medium">{c.policyName}</span>: score{" "}
-                            <span className="font-mono">{c.score}</span>/100 —{" "}
+                            <span className="font-mono">{c.effectiveScore ?? c.score}</span>/100
+                            {(c.effectiveScore != null && c.effectiveScore !== c.score) && (
+                              <span className="text-muted-foreground text-xs ml-1">
+                                (raw {c.score})
+                              </span>
+                            )}{" "}
+                            —{" "}
                             <span
                               className={
                                 c.status === "COMPLIANT"
@@ -422,7 +519,14 @@ export function ContractDetailClient({
                         <p className="text-xs font-medium text-muted-foreground mb-1">Findings</p>
                         <ul className="text-sm space-y-3 list-none pl-0">
                           {v.findings.map((f) => (
-                            <FindingRow key={f.id} finding={f} />
+                            <FindingRow
+                              key={f.id}
+                              finding={f}
+                              versionId={v.id}
+                              contractId={contractId}
+                              canRequestException={canAnalyze}
+                              onRequestException={openRequestExceptionModal}
+                            />
                           ))}
                         </ul>
                       </div>
@@ -528,6 +632,49 @@ export function ContractDetailClient({
           )}
         </CardContent>
       </Card>
+
+      {exceptionModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="rounded-lg border bg-background p-4 shadow-lg max-w-md w-full space-y-3">
+            <h3 className="font-semibold">Request exception</h3>
+            <div>
+              <Label className="text-sm">Title</Label>
+              <input
+                className="mt-1 w-full rounded border bg-background px-2 py-1.5 text-sm"
+                value={exceptionTitle}
+                onChange={(e) => setExceptionTitle(e.target.value)}
+                placeholder="Short title for this exception"
+              />
+            </div>
+            <div>
+              <Label className="text-sm">Justification</Label>
+              <textarea
+                className="mt-1 w-full rounded border bg-background px-2 py-1.5 text-sm min-h-[100px]"
+                value={exceptionJustification}
+                onChange={(e) => setExceptionJustification(e.target.value)}
+                placeholder="Why this exception is requested"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setExceptionModal(null)}
+                disabled={exceptionSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={submitRequestException}
+                disabled={exceptionSubmitting || !exceptionTitle.trim() || !exceptionJustification.trim()}
+              >
+                {exceptionSubmitting ? "Submitting…" : "Submit"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

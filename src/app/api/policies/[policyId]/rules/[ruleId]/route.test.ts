@@ -10,6 +10,7 @@ vi.mock("@/core/services/security/rbac", async (importOriginal) => {
 });
 vi.mock("@/core/db/repositories/policyRepo");
 vi.mock("@/core/db/repositories/policyRuleRepo");
+vi.mock("@/core/services/ledger/ledgerService", () => ({ recordEvent: vi.fn().mockResolvedValue(undefined) }));
 
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, requireWorkspace, AuthError } from "@/core/services/security/rbac";

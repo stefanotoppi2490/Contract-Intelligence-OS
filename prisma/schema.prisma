@@ -154,9 +154,29 @@ enum RecommendedAction {
 }
 
 enum ExceptionStatus {
-  PENDING
+  REQUESTED
   APPROVED
   REJECTED
+  WITHDRAWN
+}
+
+enum ExceptionDecision {
+  APPROVE
+  REJECT
+}
+
+enum LedgerEventType {
+  CONTRACT_UPLOADED
+  TEXT_EXTRACTED
+  ANALYSIS_RUN
+  EXCEPTION_REQUESTED
+  EXCEPTION_APPROVED
+  EXCEPTION_REJECTED
+  EXCEPTION_WITHDRAWN
+  POLICY_CREATED
+  POLICY_RULE_CREATED
+  POLICY_RULE_UPDATED
+  POLICY_RULE_DELETED
 }
 
 // ─── Tenant & Auth ─────────────────────────────────────────────────────────
@@ -167,12 +187,14 @@ model Workspace {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  memberships     Membership[]
-  counterparties  Counterparty[]
-  contracts       Contract[]
-  policies        Policy[]
-  riskLedgerEvents RiskLedgerEvent[]
-  auditEvents     AuditEvent[]
+  memberships        Membership[]
+  counterparties     Counterparty[]
+  contracts          Contract[]
+  policies           Policy[]
+  riskLedgerEvents   RiskLedgerEvent[]
+  ledgerEvents       LedgerEvent[]
+  exceptionRequests  ExceptionRequest[]
+  auditEvents        AuditEvent[]
 
   @@index([createdAt])
 }
@@ -355,8 +377,9 @@ model ClauseFinding {
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 
-  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
-  rule            PolicyRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  contractVersion ContractVersion  @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  rule            PolicyRule       @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  exceptionRequests ExceptionRequest[]
 
   @@unique([contractVersionId, ruleId])
   @@index([contractVersionId, createdAt])
@@ -438,23 +461,65 @@ model PolicyViolation {
 // ─── Workflow ──────────────────────────────────────────────────────────────
 
 model ExceptionRequest {
-  id                String          @id @default(cuid())
+  id                String           @id @default(cuid())
+  workspaceId       String
+  contractId        String
   contractVersionId String
-  policyId          String
+  clauseFindingId   String?
+  policyId          String?
+  clauseType        String?          // denormalized for lists
+  title             String          @db.Text
+  justification     String          @db.Text
+  requestedByUserId String
   status            ExceptionStatus
-  requestedByUserId String?
-  justification     String?
   decidedByUserId   String?
   decidedAt         DateTime?
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  decisionReason    String?          @db.Text
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
-  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
-  policy          Policy         @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  workspace       Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contractVersion ContractVersion  @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  clauseFinding   ClauseFinding?    @relation(fields: [clauseFindingId], references: [id], onDelete: SetNull)
+  policy          Policy?          @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  comments        ExceptionComment[]
 
-  // Partial unique (only one PENDING per contractVersionId+policyId) added in migration SQL
+  @@index([workspaceId, status])
   @@index([contractVersionId, policyId])
   @@index([contractVersionId, createdAt])
+  @@index([clauseFindingId])
+}
+
+model ExceptionComment {
+  id          String   @id @default(cuid())
+  exceptionId String
+  userId      String
+  message     String   @db.Text
+  createdAt   DateTime @default(now())
+
+  exceptionRequest ExceptionRequest @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
+
+  @@index([exceptionId])
+}
+
+model LedgerEvent {
+  id                 String          @id @default(cuid())
+  workspaceId        String
+  actorUserId        String?
+  type               LedgerEventType
+  entityType         String
+  entityId           String
+  contractId         String?
+  contractVersionId  String?
+  policyId           String?
+  exceptionId        String?
+  metadata           Json?
+  createdAt          DateTime        @default(now())
+
+  workspace Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  @@index([workspaceId, createdAt])
+  @@index([workspaceId, type])
 }
 
 // ─── Append-only logs (immutable; no update flows) ─────────────────────────
