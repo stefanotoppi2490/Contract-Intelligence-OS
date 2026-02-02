@@ -22,12 +22,16 @@ describe("POST /api/contracts/[id]/versions/[versionId]/documents", () => {
   const contractId = "c-1";
   const versionId = "v-1";
 
+  const memberSession = {
+    user: { id: "u-1", email: "u@test.com", name: null, image: null },
+    userId: "u-1",
+    email: "u@test.com" as string | null,
+    currentWorkspaceId: workspaceId,
+    role: "MEMBER" as const,
+  };
+
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "MEMBER",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(memberSession);
     vi.mocked(contractRepo.getContractDetail).mockResolvedValue({
       id: contractId,
       workspaceId,

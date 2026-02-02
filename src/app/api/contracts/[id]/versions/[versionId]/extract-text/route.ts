@@ -14,8 +14,12 @@ import {
   getExtractorFromMime,
 } from "@/core/services/extraction/extractText";
 import { extractClausesNeutral } from "@/core/services/extraction/aiClauseExtractor";
+import type { Prisma } from "@prisma/client";
 
 const PREVIEW_LENGTH = 500;
+
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
 
 /** POST: extract text from main document. Idempotent: if TEXT_READY and !force return existing; if ERROR allow retry. */
 export async function POST(
@@ -37,7 +41,8 @@ export async function POST(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }
@@ -139,10 +144,12 @@ export async function POST(
             versionId,
             extractions.map((e) => ({
               clauseType: e.clauseType,
-              extractedValue: e.extractedValue,
+              extractedValue: e.extractedValue as Prisma.InputJsonValue,
               extractedText: e.extractedText,
               confidence: e.confidence,
-              sourceLocation: e.sourceLocation ?? undefined,
+              sourceLocation: (e.sourceLocation ?? undefined) as
+                | Prisma.InputJsonValue
+                | undefined,
             }))
           );
         }

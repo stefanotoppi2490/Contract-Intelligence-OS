@@ -5,6 +5,9 @@ import { getTextQuerySchema } from "@/lib/validations/document";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as contractVersionTextRepo from "@/core/db/repositories/contractVersionTextRepo";
 
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
+
 const DEFAULT_PREVIEW_LENGTH = 500;
 const MAX_FULL_TEXT = 50_000;
 
@@ -28,7 +31,8 @@ export async function GET(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }

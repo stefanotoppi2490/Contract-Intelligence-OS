@@ -44,12 +44,16 @@ describe("POST /api/contracts/[id]/versions/[versionId]/extract-text", () => {
   const versionId = "v-1";
   const docId = "doc-1";
 
+  const memberSession = {
+    user: { id: "u-1", email: "u@test.com", name: null, image: null },
+    userId: "u-1",
+    email: "u@test.com" as string | null,
+    currentWorkspaceId: workspaceId,
+    role: "MEMBER" as const,
+  };
+
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "MEMBER",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(memberSession);
     vi.mocked(requireRole).mockImplementation(() => {});
     vi.mocked(contractRepo.getContractDetail).mockResolvedValue({
       id: contractId,
@@ -70,24 +74,27 @@ describe("POST /api/contracts/[id]/versions/[versionId]/extract-text", () => {
       id: "txt-1",
       contractVersionId: versionId,
       text: "Sample text",
-      extractor: "text/plain",
+      extractor: "TXT",
       status: "TEXT_READY",
       errorMessage: null,
       extractedAt: new Date(),
-    } as Awaited<ReturnType<typeof contractVersionTextRepo.upsertContractVersionText>>);
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as unknown as Awaited<ReturnType<typeof contractVersionTextRepo.upsertContractVersionText>>);
     vi.mocked(documentRepo.updateDocument).mockResolvedValue(undefined as unknown as Awaited<ReturnType<typeof documentRepo.updateDocument>>);
     vi.mocked(extractFromBuffer).mockResolvedValue({
       ok: true,
       text: "Contract full text here.",
-      extractor: "text/plain",
+      extractor: "TXT",
+      status: "TEXT_READY",
     });
     vi.mocked(extractClausesNeutral).mockResolvedValue([]);
   });
 
   it("returns 403 when user is VIEWER", async () => {
     vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
+      ...memberSession,
       userId: "u-viewer",
-      currentWorkspaceId: workspaceId,
       role: "VIEWER",
     });
     vi.mocked(requireRole).mockImplementation(() => {

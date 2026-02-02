@@ -4,6 +4,9 @@ import { requireWorkspace, AuthError } from "@/core/services/security/rbac";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as clauseExtractionRepo from "@/core/db/repositories/clauseExtractionRepo";
 
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
+
 /** GET: list AI clause extractions for a contract version. RBAC: VIEWER can read. */
 export async function GET(
   req: Request,
@@ -19,14 +22,16 @@ export async function GET(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }
 
     const extractions = await clauseExtractionRepo.findManyByContractVersion(versionId);
+    type ExtractionRow = Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number];
     return NextResponse.json(
-      extractions.map((e) => ({
+      extractions.map((e: ExtractionRow) => ({
         id: e.id,
         clauseType: e.clauseType,
         extractedValue: e.extractedValue,

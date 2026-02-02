@@ -7,6 +7,9 @@ import * as clauseFindingRepo from "@/core/db/repositories/clauseFindingRepo";
 import * as exceptionRepo from "@/core/db/repositories/exceptionRepo";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
 
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
+
 /** POST: create exception request for this version. RBAC: LEGAL/RISK/ADMIN. Dedupe: 409 if active exception exists for same finding or (version, policy, title). */
 export async function POST(
   req: Request,
@@ -21,7 +24,8 @@ export async function POST(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }

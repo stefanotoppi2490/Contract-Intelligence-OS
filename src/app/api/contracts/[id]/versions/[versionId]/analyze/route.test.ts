@@ -39,12 +39,16 @@ describe("POST /api/contracts/[id]/versions/[versionId]/analyze", () => {
   const versionId = "v-1";
   const policyId = "p-1";
 
+  const legalSession = {
+    user: { id: "u-1", email: "u@test.com", name: null, image: null },
+    userId: "u-1",
+    email: "u@test.com" as string | null,
+    currentWorkspaceId: workspaceId,
+    role: "LEGAL" as const,
+  };
+
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "LEGAL",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(legalSession);
     vi.mocked(requireRole).mockImplementation(() => {});
     vi.mocked(contractRepo.getContractDetail).mockResolvedValue({
       id: contractId,

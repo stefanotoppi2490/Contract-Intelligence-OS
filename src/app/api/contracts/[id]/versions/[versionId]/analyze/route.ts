@@ -8,6 +8,9 @@ import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { analyze } from "@/core/services/policyEngine/policyEngine";
 
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
+
 /** POST: run deterministic policy analysis for this version + policy. RBAC: LEGAL/RISK/ADMIN. */
 export async function POST(
   req: Request,
@@ -22,7 +25,8 @@ export async function POST(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }

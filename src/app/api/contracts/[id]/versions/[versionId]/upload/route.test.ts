@@ -27,12 +27,16 @@ describe("POST /api/contracts/[id]/versions/[versionId]/upload", () => {
   const contractId = "c-1";
   const versionId = "v-1";
 
+  const memberSession = {
+    user: { id: "u-1", email: "u@test.com", name: null, image: null },
+    userId: "u-1",
+    email: "u@test.com" as string | null,
+    currentWorkspaceId: workspaceId,
+    role: "MEMBER" as const,
+  };
+
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "MEMBER",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(memberSession);
     vi.mocked(requireRole).mockImplementation(() => {});
     vi.mocked(contractRepo.getContractDetail).mockResolvedValue({
       id: contractId,
@@ -52,8 +56,8 @@ describe("POST /api/contracts/[id]/versions/[versionId]/upload", () => {
 
   it("returns 403 when user is VIEWER", async () => {
     vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
+      ...memberSession,
       userId: "u-viewer",
-      currentWorkspaceId: workspaceId,
       role: "VIEWER",
     });
     vi.mocked(requireRole).mockImplementation(() => {

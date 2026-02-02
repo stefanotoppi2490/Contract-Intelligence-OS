@@ -8,6 +8,9 @@ import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { uploadBlob } from "@/core/services/storage/blobStore";
 
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
+
 const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4.5 MB Vercel serverless limit; use 4 MB to be safe
 
 /** POST: multipart form with "file". One main document per version (409 if exists). */
@@ -24,7 +27,8 @@ export async function POST(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }

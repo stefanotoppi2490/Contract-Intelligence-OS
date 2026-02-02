@@ -7,6 +7,9 @@ import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as documentRepo from "@/core/db/repositories/documentRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 
+/** getContractDetail includes versions; Prisma inference can omit it. */
+type ContractWithVersions = { versions: { id: string }[] };
+
 /** MVP: only one main document per contract version. Returns 409 if version already has a document. */
 export async function POST(
   req: Request,
@@ -21,7 +24,8 @@ export async function POST(
     if (!contract) {
       return NextResponse.json({ error: "Contract not found" }, { status: 404 });
     }
-    const version = contract.versions.find((v) => v.id === versionId);
+    const withVersions = contract as unknown as ContractWithVersions;
+    const version = withVersions.versions.find((v) => v.id === versionId);
     if (!version) {
       return NextResponse.json({ error: "Version not found" }, { status: 404 });
     }
