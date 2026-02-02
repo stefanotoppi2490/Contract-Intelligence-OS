@@ -6,11 +6,10 @@ import * as policyRepo from "@/core/db/repositories/policyRepo";
 import * as workspaceRepo from "@/core/db/repositories/workspaceRepo";
 import { compareVersions } from "@/core/services/compare/versionCompare";
 import { buildCompareReportHtml } from "@/core/services/reports/versionCompareReport";
+import { buildComparePdf } from "@/core/services/reports/versionComparePdf";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
 
-const reportBodySchema = { fromVersionId: String, toVersionId: String, policyId: String };
-
-/** POST: export version compare report as HTML. Body: { fromVersionId, toVersionId, policyId }. RBAC: LEGAL/RISK/ADMIN. */
+/** POST: export version compare report. Body: { fromVersionId, toVersionId, policyId, format?: "pdf" | "html" }. Default format: html. RBAC: LEGAL/RISK/ADMIN. */
 export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -24,6 +23,7 @@ export async function POST(
     const fromVersionId = typeof body.fromVersionId === "string" ? body.fromVersionId : "";
     const toVersionId = typeof body.toVersionId === "string" ? body.toVersionId : "";
     const policyId = typeof body.policyId === "string" ? body.policyId : "";
+    const format = body.format === "pdf" ? "pdf" : "html";
     if (!fromVersionId || !toVersionId || !policyId) {
       return NextResponse.json(
         { error: "Missing fromVersionId, toVersionId, or policyId" },
@@ -57,11 +57,9 @@ export async function POST(
       );
     }
     const workspace = await workspaceRepo.findWorkspaceById(workspaceId);
-    const html = buildCompareReportHtml(outcome.result, {
-      contractTitle: contract.title,
-      policyName: policy.name,
-      workspaceName: workspace?.name ?? undefined,
-    });
+    const fromNum = outcome.result.from.versionNumber;
+    const toNum = outcome.result.to.versionNumber;
+
     await recordEvent({
       workspaceId,
       actorUserId: session.userId,
@@ -74,16 +72,38 @@ export async function POST(
       metadata: {
         fromVersionId,
         toVersionId,
-        fromVersionNumber: outcome.result.from.versionNumber,
-        toVersionNumber: outcome.result.to.versionNumber,
+        fromVersionNumber: fromNum,
+        toVersionNumber: toNum,
         policyId,
+        format,
       },
+    });
+
+    if (format === "pdf") {
+      const pdfBytes = await buildComparePdf(outcome.result, {
+        contractTitle: contract.title,
+        policyName: policy.name,
+        workspaceName: workspace?.name ?? undefined,
+      });
+      return new NextResponse(pdfBytes, {
+        status: 200,
+        headers: {
+          "Content-Type": "application/pdf",
+          "Content-Disposition": `attachment; filename="Contract_Compare_v${fromNum}_vs_v${toNum}.pdf"`,
+        },
+      });
+    }
+
+    const html = buildCompareReportHtml(outcome.result, {
+      contractTitle: contract.title,
+      policyName: policy.name,
+      workspaceName: workspace?.name ?? undefined,
     });
     return new NextResponse(html, {
       status: 200,
       headers: {
         "Content-Type": "text/html; charset=utf-8",
-        "Content-Disposition": `attachment; filename="compare-v${outcome.result.from.versionNumber}-v${outcome.result.to.versionNumber}.html"`,
+        "Content-Disposition": `attachment; filename="compare-v${fromNum}-v${toNum}.html"`,
       },
     });
   } catch (e) {

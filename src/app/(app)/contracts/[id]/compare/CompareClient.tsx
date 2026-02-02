@@ -138,6 +138,7 @@ export function CompareClient({
   const [policyId, setPolicyId] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [missingVersionId, setMissingVersionId] = useState<string | null>(null);
   const [result, setResult] = useState<VersionCompareResult | null>(null);
@@ -198,6 +199,35 @@ export function CompareClient({
       setError("Export failed");
     } finally {
       setExporting(false);
+    }
+  }
+
+  async function exportReportPdf() {
+    if (!fromVersionId || !toVersionId || !policyId || !canExportReport) return;
+    setExportingPdf(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/compare/report`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromVersionId, toVersionId, policyId, format: "pdf" }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const filename = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "Contract_Compare.pdf";
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      setError("Export failed");
+    } finally {
+      setExportingPdf(false);
     }
   }
 
@@ -267,9 +297,14 @@ export function CompareClient({
               {loading ? "Comparing…" : "Compare"}
             </Button>
             {result && canExportReport && (
-              <Button variant="outline" onClick={exportReport} disabled={exporting}>
-                {exporting ? "Exporting…" : "Export report (HTML)"}
-              </Button>
+              <>
+                <Button variant="outline" onClick={exportReport} disabled={exporting}>
+                  {exporting ? "Exporting…" : "Export report (HTML)"}
+                </Button>
+                <Button variant="outline" onClick={exportReportPdf} disabled={exportingPdf}>
+                  {exportingPdf ? "Exporting…" : "Export PDF"}
+                </Button>
+              </>
             )}
           </div>
         </CardContent>
