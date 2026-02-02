@@ -21,11 +21,10 @@ import {
   extractClauses,
   type ExtractionResult,
 } from "@/core/services/policy/aiClauseExtractor";
+import { getConfidenceThreshold, clampConfidence } from "@/core/config/confidence";
 
 const SCORE_FULL = 100;
 const SCORE_CAP_IF_CRITICAL = 40;
-const CONFIDENCE_THRESHOLD = 0.5;
-const CONFIDENCE_THRESHOLD_FORBIDDEN = 0.6;
 const ENGINE_VERSION = "5b-1";
 
 /** STEP 8B: default true; set USE_CLAUSE_EXTRACTIONS=false for legacy AI extraction path. */
@@ -53,6 +52,8 @@ export type AnalyzeResult = {
   violationsCount: number;
   /** STEP 8B: set when analysis used ClauseExtraction (EVALUATE_EXTRACTED_CLAUSES). */
   mode?: "EVALUATE_EXTRACTED_CLAUSES";
+  /** STEP 8C: findings set to UNCLEAR due to low confidence (for ledger metadata). */
+  unclear?: { clauseType: string; confidence: number; threshold: number }[];
 };
 
 /**
@@ -107,13 +108,15 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     byRuleId = new Map<string, ExtractionResult>();
     for (const rule of rules) {
       const extraction = byClauseType.get(rule.clauseType);
+      const rawConf = extraction?.confidence ?? null;
+      const confidence = clampConfidence(rawConf);
       byRuleId.set(rule.id, {
         ruleId: rule.id,
         clauseType: rule.clauseType,
         present: !!extraction,
         foundText: extraction?.extractedText ?? null,
         foundValue: (extraction?.extractedValue ?? null) as string | number | object | null,
-        confidence: extraction?.confidence ?? 0,
+        confidence,
         notes: null,
       });
     }
@@ -137,6 +140,8 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
   const evaluatedAt = new Date();
   let totalDeduction = 0;
   let hasCriticalViolation = false;
+  const unclearList: { clauseType: string; confidence: number; threshold: number }[] = [];
+  const threshold = getConfidenceThreshold();
 
   for (const rule of rules) {
     const extracted = byRuleId.get(rule.id) ?? null;
@@ -154,6 +159,31 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
         parseNotes: null,
         evaluatedAt,
         engineVersion: ENGINE_VERSION,
+        unclearReason: null,
+      };
+      await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, findingData as Parameters<typeof clauseFindingRepo.upsertClauseFinding>[2]);
+      continue;
+    }
+    // STEP 8C: only when using ClauseExtraction — extraction exists but confidence < threshold -> UNCLEAR (no rule evaluation, no deduction)
+    if (useClauseExtractions && extracted?.present && extracted.confidence < threshold) {
+      unclearList.push({
+        clauseType: rule.clauseType,
+        confidence: extracted.confidence,
+        threshold,
+      });
+      const findingData = {
+        clauseType: rule.clauseType,
+        complianceStatus: "UNCLEAR" as FindingComplianceStatus,
+        severity: rule.severity ?? undefined,
+        riskType: rule.riskType ?? undefined,
+        recommendation: null,
+        foundText: extracted.foundText ?? null,
+        foundValue: extracted.foundValue ?? undefined,
+        confidence: extracted.confidence,
+        parseNotes: extracted.notes ?? null,
+        evaluatedAt,
+        engineVersion: ENGINE_VERSION,
+        unclearReason: "LOW_CONFIDENCE",
       };
       await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, findingData as Parameters<typeof clauseFindingRepo.upsertClauseFinding>[2]);
       continue;
@@ -181,6 +211,7 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
       parseNotes: extracted?.notes ?? null,
       evaluatedAt,
       engineVersion: ENGINE_VERSION,
+      unclearReason: null,
     };
     await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, findingData as Parameters<typeof clauseFindingRepo.upsertClauseFinding>[2]);
   }
@@ -200,6 +231,7 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     const ext = byRuleId.get(r.id);
     const noExtractionNotRequired = useClauseExtractions && !ext?.present && (r.ruleType as string) !== "REQUIRED";
     if (noExtractionNotRequired) return false;
+    if (useClauseExtractions && ext?.present && ext.confidence < threshold) return false;
     const { complianceStatus } = evaluateRuleWithExtraction(r, ext ?? null);
     return complianceStatus === "VIOLATION";
   }).length;
@@ -212,6 +244,7 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     findingsCount: rules.length,
     violationsCount,
     ...(useClauseExtractions ? { mode: "EVALUATE_EXTRACTED_CLAUSES" as const } : {}),
+    ...(unclearList.length > 0 ? { unclear: unclearList } : {}),
   };
 }
 
@@ -234,9 +267,10 @@ function evaluateRuleWithExtraction(
   const confidence = extracted?.confidence ?? 0;
   const foundValue = extracted?.foundValue;
 
+  const confThreshold = getConfidenceThreshold();
   switch (rule.ruleType) {
     case "REQUIRED": {
-      if (!present || confidence < CONFIDENCE_THRESHOLD) {
+      if (!present || confidence < confThreshold) {
         return {
           complianceStatus: "VIOLATION",
           deduction: rule.weight,
@@ -250,7 +284,7 @@ function evaluateRuleWithExtraction(
       };
     }
     case "FORBIDDEN": {
-      if (present && confidence >= CONFIDENCE_THRESHOLD_FORBIDDEN) {
+      if (present && confidence >= confThreshold) {
         return {
           complianceStatus: "VIOLATION",
           deduction: rule.weight,
@@ -273,7 +307,7 @@ function evaluateRuleWithExtraction(
           isCritical: rule.severity === "CRITICAL",
         };
       }
-      if (foundValue == null || confidence < CONFIDENCE_THRESHOLD) {
+      if (foundValue == null || confidence < confThreshold) {
         return {
           complianceStatus: "UNCLEAR",
           deduction: 0,

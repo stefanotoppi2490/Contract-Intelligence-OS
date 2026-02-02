@@ -56,6 +56,7 @@ export async function GET(
         isOverridden: isOverridden ?? false,
         exceptionId: ex?.id ?? null,
         exceptionStatus: ex ? "APPROVED" : null,
+        unclearReason: (f as { unclearReason?: string | null }).unclearReason ?? null,
       };
     });
 
@@ -67,21 +68,40 @@ export async function GET(
 
     const compliancesPayload = compliances.map((c) => {
       let effectiveScore = c.score;
+      let violationCount = 0;
+      let unclearCount = 0;
+      let compliantCount = 0;
       for (const f of findings) {
         const policyId = (f.rule as { policyId?: string })?.policyId;
         if (policyId !== c.policyId) continue;
+        if (f.complianceStatus === "VIOLATION") violationCount += 1;
+        else if (f.complianceStatus === "UNCLEAR") unclearCount += 1;
+        else if (f.complianceStatus === "COMPLIANT") compliantCount += 1;
         if (f.complianceStatus !== "VIOLATION" && f.complianceStatus !== "UNCLEAR") continue;
         if (!findingIdToException.has(f.id)) continue;
         const weight = ruleWeightByFindingId.get(f.id) ?? 1;
         effectiveScore = Math.min(100, effectiveScore + weight);
       }
+      const needsReview = unclearCount > 0 || violationCount > 0;
+      const derivedStatus =
+        effectiveScore < 60
+          ? "NON_COMPLIANT"
+          : violationCount > 0
+            ? "NEEDS_REVIEW"
+            : unclearCount > 0
+              ? "NEEDS_REVIEW"
+              : "COMPLIANT";
       return {
         policyId: c.policyId,
         policyName: c.policy.name,
         rawScore: c.score,
         score: c.score,
         effectiveScore,
-        status: c.status,
+        status: derivedStatus,
+        unclearCount,
+        violationCount,
+        compliantCount,
+        needsReview,
       };
     });
 

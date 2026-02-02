@@ -401,6 +401,7 @@ model ClauseFinding {
   parseNotes        String?                @db.Text
   evaluatedAt       DateTime?
   engineVersion     String?                // e.g. "5b-1"
+  unclearReason     String?                @db.Text  // STEP 8C: e.g. "LOW_CONFIDENCE"
   createdAt         DateTime               @default(now())
   updatedAt         DateTime               @updatedAt
 

@@ -99,6 +99,11 @@ function buildWhy(
     const parts: string[] = [];
     if (from?.status !== to?.status) {
       parts.push(`Compliance changed: ${from?.status ?? "—"} → ${to?.status ?? "—"}`);
+      if (to?.status === "UNCLEAR") {
+        parts.push("Confidence below threshold (0.75)");
+      } else if (from?.status === "UNCLEAR" && to?.status !== "UNCLEAR") {
+        parts.push("Confidence now above threshold (0.75)");
+      }
     }
     if (from?.overridden !== to?.overridden) {
       if (to?.overridden) parts.push("Approved exception applied in v2");
@@ -194,9 +199,9 @@ export async function compareVersions(input: CompareInput): Promise<{
     const clauseType = fromF?.clauseType ?? toF?.clauseType ?? "OTHER";
     const ruleId = fromF?.ruleId ?? toF?.ruleId;
 
-    const isViolationFrom = fromF && (fromF.complianceStatus === "VIOLATION" || fromF.complianceStatus === "UNCLEAR");
+    const isViolationFrom = fromF && fromF.complianceStatus === "VIOLATION";
     const isOverriddenFrom = fromF ? overriddenFrom.has(fromF.id) : false;
-    const isViolationTo = toF && (toF.complianceStatus === "VIOLATION" || toF.complianceStatus === "UNCLEAR");
+    const isViolationTo = toF && toF.complianceStatus === "VIOLATION";
     const isOverriddenTo = toF ? overriddenTo.has(toF.id) : false;
 
     const impactFrom = isViolationFrom && !isOverriddenFrom ? w : 0;

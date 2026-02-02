@@ -23,7 +23,17 @@ type VersionText = {
   errorMessage: string | null;
   extractor: string;
 } | null;
-type Compliance = { policyId: string; policyName: string; score: number; effectiveScore?: number; status: string };
+type Compliance = {
+  policyId: string;
+  policyName: string;
+  score: number;
+  effectiveScore?: number;
+  status: string;
+  unclearCount?: number;
+  violationCount?: number;
+  compliantCount?: number;
+  needsReview?: boolean;
+};
 type Finding = {
   id: string;
   clauseType: string;
@@ -40,6 +50,7 @@ type Finding = {
   exceptionId: string | null;
   exceptionStatus: string | null;
   isOverridden: boolean;
+  unclearReason: string | null;
 };
 type Extraction = {
   id: string;
@@ -112,7 +123,13 @@ function FindingRow({
     <li className="rounded border p-2 space-y-1">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs">{f.clauseType}</span>
-        <span className={statusColor}>{f.complianceStatus}</span>
+        {f.complianceStatus === "UNCLEAR" ? (
+          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+            UNCLEAR
+          </span>
+        ) : (
+          <span className={statusColor}>{f.complianceStatus}</span>
+        )}
         {f.isOverridden && (
           <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400">
             Overridden
@@ -128,7 +145,7 @@ function FindingRow({
         )}
         {f.confidence != null && (
           <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
-            {(f.confidence * 100).toFixed(0)}% confidence
+            {Math.round(f.confidence * 100)}% confidence
           </span>
         )}
       </div>
@@ -138,10 +155,15 @@ function FindingRow({
         <span className="text-muted-foreground">Expected:</span>
         <span>{formatValue(f.expectedValue)}</span>
       </div>
-      {f.complianceStatus === "UNCLEAR" && (f.parseNotes || (f.confidence != null && f.confidence < 0.5)) && (
+      {f.complianceStatus === "UNCLEAR" && (f.unclearReason === "LOW_CONFIDENCE" || f.confidence != null) && (
         <p className="text-xs text-amber-700 dark:text-amber-300">
-          {f.parseNotes ?? "Low confidence or value could not be parsed."}
+          {f.unclearReason === "LOW_CONFIDENCE" && f.confidence != null
+            ? `Low extraction confidence (${Math.round(f.confidence * 100)}%), needs review`
+            : f.parseNotes ?? "Low confidence or value could not be parsed."}
         </p>
+      )}
+      {f.complianceStatus === "UNCLEAR" && !f.unclearReason && !(f.confidence != null) && f.parseNotes && (
+        <p className="text-xs text-amber-700 dark:text-amber-300">{f.parseNotes}</p>
       )}
       {f.foundText && (
         <div className="pt-1">
@@ -563,6 +585,11 @@ export function ContractDetailClient({
                             >
                               {c.status}
                             </span>
+                            {c.unclearCount != null && c.unclearCount > 0 && (
+                              <span className="text-amber-600 dark:text-amber-400 text-xs ml-1">
+                                ⚠ {c.unclearCount} clause{c.unclearCount === 1 ? "" : "s"} need{c.unclearCount === 1 ? "s" : ""} review
+                              </span>
+                            )}
                           </li>
                         ))}
                       </ul>

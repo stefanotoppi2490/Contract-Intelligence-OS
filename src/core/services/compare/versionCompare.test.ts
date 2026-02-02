@@ -41,6 +41,7 @@ function makeFinding(overrides: {
   complianceStatus: string;
   foundValue?: unknown;
   foundText?: string | null;
+  confidence?: number | null;
   rule?: { policyId?: string; weight?: number };
 }) {
   return {
@@ -50,7 +51,7 @@ function makeFinding(overrides: {
     complianceStatus: overrides.complianceStatus,
     foundValue: overrides.foundValue ?? null,
     foundText: overrides.foundText ?? null,
-    confidence: null,
+    confidence: overrides.confidence ?? null,
     rule: overrides.rule ?? { policyId, weight: 1 },
     recommendation: null,
     severity: null,
@@ -336,6 +337,89 @@ describe("versionCompare", () => {
       expect(outcome.result.to.effectiveScore).toBe(75);
       expect(outcome.result.delta.effective).toBe(-10);
       expect(outcome.result.delta.label).toBe("WORSENED");
+    }
+  });
+
+  it("STEP 8C: UNCLEAR → COMPLIANT yields MODIFIED and why mentions status/confidence", async () => {
+    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockImplementation(
+      ((contractVersionId: string) => {
+        const fromF = makeFinding({
+          id: "f-1",
+          clauseType: "DATA_PRIVACY",
+          ruleId: "r-1",
+          complianceStatus: "UNCLEAR",
+          confidence: 0.62,
+          rule: { policyId, weight: 5 },
+        });
+        const toF = makeFinding({
+          id: "f-2",
+          clauseType: "DATA_PRIVACY",
+          ruleId: "r-1",
+          complianceStatus: "COMPLIANT",
+          confidence: 0.9,
+          rule: { policyId, weight: 5 },
+        });
+        if (contractVersionId === fromVersionId) return Promise.resolve([fromF]);
+        return Promise.resolve([toF]);
+      }) as typeof clauseFindingRepo.findManyClauseFindingsByContractVersion
+    );
+
+    const outcome = await compareVersions({
+      workspaceId,
+      contractId,
+      fromVersionId,
+      toVersionId,
+      policyId,
+    });
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      const change = outcome.result.changes.find((c) => c.clauseType === "DATA_PRIVACY");
+      expect(change?.changeType).toBe("MODIFIED");
+      expect(change?.from?.status).toBe("UNCLEAR");
+      expect(change?.to?.status).toBe("COMPLIANT");
+      expect(change?.why).toContain("Compliance changed");
+      expect(change?.why).toContain("Confidence now above threshold (0.75)");
+    }
+  });
+
+  it("STEP 8C: top drivers do not count UNCLEAR as weight deduction", async () => {
+    vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockImplementation(
+      ((contractVersionId: string) =>
+        Promise.resolve(makeCompliance(contractVersionId === fromVersionId ? 90 : 100))) as unknown as (
+        contractVersionId: string,
+        policyId: string
+      ) => ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>
+    );
+    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockImplementation(
+      ((contractVersionId: string) => {
+        const rule = { policyId, weight: 10 };
+        const finding = makeFinding({
+          id: contractVersionId === fromVersionId ? "f-1" : "f-2",
+          clauseType: "LIABILITY",
+          ruleId: "r-1",
+          complianceStatus: contractVersionId === fromVersionId ? "UNCLEAR" : "COMPLIANT",
+          rule,
+        });
+        return Promise.resolve([finding]);
+      }) as typeof clauseFindingRepo.findManyClauseFindingsByContractVersion
+    );
+
+    const outcome = await compareVersions({
+      workspaceId,
+      contractId,
+      fromVersionId,
+      toVersionId,
+      policyId,
+    });
+    expect(outcome.ok).toBe(true);
+    if (outcome.ok) {
+      expect(outcome.result.delta.raw).toBe(10);
+      expect(outcome.result.delta.label).toBe("IMPROVED");
+      const change = outcome.result.changes.find((c) => c.clauseType === "LIABILITY");
+      expect(change?.changeType).toBe("MODIFIED");
+      expect(change?.from?.status).toBe("UNCLEAR");
+      expect(change?.to?.status).toBe("COMPLIANT");
+      expect(outcome.result.topDrivers).toHaveLength(0);
     }
   });
 });

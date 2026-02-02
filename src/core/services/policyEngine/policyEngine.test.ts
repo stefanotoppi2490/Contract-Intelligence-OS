@@ -8,6 +8,13 @@ vi.mock("@/core/db/repositories/contractComplianceRepo");
 vi.mock("@/core/db/repositories/contractVersionTextRepo");
 vi.mock("@/core/db/repositories/clauseExtractionRepo");
 vi.mock("@/core/services/policy/aiClauseExtractor");
+vi.mock("@/core/config/confidence", () => ({
+  getConfidenceThreshold: vi.fn(() => 0.75),
+  clampConfidence: vi.fn((v: number | null | undefined) => {
+    if (v == null || Number.isNaN(v)) return 0;
+    return Math.max(0, Math.min(1, v));
+  }),
+}));
 
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
@@ -433,5 +440,119 @@ describe("policyEngine STEP 8B (ClauseExtraction path)", () => {
       "r1",
       expect.objectContaining({ complianceStatus: "NOT_APPLICABLE", foundText: null, confidence: undefined })
     );
+  });
+
+  describe("STEP 8C confidence threshold", () => {
+    it("extraction with confidence 0.6 and threshold 0.75 => finding UNCLEAR, unclearReason LOW_CONFIDENCE, no deduction", async () => {
+      vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+        makeRule({ id: "r1", ruleType: "REQUIRED", clauseType: "DATA_PRIVACY", weight: 10 }),
+      ]);
+      vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([
+        {
+          id: "ex-1",
+          workspaceId: "ws-1",
+          contractId: "c-1",
+          contractVersionId: versionId,
+          clauseType: "DATA_PRIVACY",
+          extractedValue: { present: true },
+          extractedText: "Data processed per DPA.",
+          confidence: 0.6,
+          sourceLocation: null,
+          extractedBy: "AI",
+          createdAt: new Date(),
+        } as Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number],
+      ]);
+
+      const result = await analyze({ contractVersionId: versionId, policyId });
+
+      expect(result.score).toBe(100);
+      expect(result.violationsCount).toBe(0);
+      expect(result.unclear).toHaveLength(1);
+      expect(result.unclear![0]).toEqual({
+        clauseType: "DATA_PRIVACY",
+        confidence: 0.6,
+        threshold: 0.75,
+      });
+      expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+        versionId,
+        "r1",
+        expect.objectContaining({
+          complianceStatus: "UNCLEAR",
+          unclearReason: "LOW_CONFIDENCE",
+          confidence: 0.6,
+          foundText: "Data processed per DPA.",
+        })
+      );
+    });
+
+    it("extraction with confidence 0.9 => normal evaluation runs", async () => {
+      vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+        makeRule({ id: "r1", ruleType: "REQUIRED", clauseType: "TERMINATION" }),
+      ]);
+      vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([
+        {
+          id: "ex-1",
+          workspaceId: "ws-1",
+          contractId: "c-1",
+          contractVersionId: versionId,
+          clauseType: "TERMINATION",
+          extractedValue: { noticeDays: 30 },
+          extractedText: "30 days notice.",
+          confidence: 0.9,
+          sourceLocation: null,
+          extractedBy: "AI",
+          createdAt: new Date(),
+        } as Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number],
+      ]);
+
+      const result = await analyze({ contractVersionId: versionId, policyId });
+
+      expect(result.score).toBe(100);
+      expect(result.violationsCount).toBe(0);
+      expect(result.unclear).toBeUndefined();
+      expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+        versionId,
+        "r1",
+        expect.objectContaining({
+          complianceStatus: "COMPLIANT",
+          unclearReason: null,
+          confidence: 0.9,
+        })
+      );
+    });
+
+    it("extraction with confidence null => UNCLEAR (clamped to 0)", async () => {
+      vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+        makeRule({ id: "r1", ruleType: "REQUIRED", clauseType: "OTHER" }),
+      ]);
+      vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([
+        {
+          id: "ex-1",
+          workspaceId: "ws-1",
+          contractId: "c-1",
+          contractVersionId: versionId,
+          clauseType: "OTHER",
+          extractedValue: null,
+          extractedText: "Some text.",
+          confidence: null as unknown as number,
+          sourceLocation: null,
+          extractedBy: "AI",
+          createdAt: new Date(),
+        } as Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number],
+      ]);
+
+      const result = await analyze({ contractVersionId: versionId, policyId });
+
+      expect(result.score).toBe(100);
+      expect(result.unclear).toHaveLength(1);
+      expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+        versionId,
+        "r1",
+        expect.objectContaining({
+          complianceStatus: "UNCLEAR",
+          unclearReason: "LOW_CONFIDENCE",
+        })
+      );
+    });
   });
 });

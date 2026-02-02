@@ -69,20 +69,39 @@ export default async function ContractDetailPage({
         }
         return v.contractCompliance.map((c) => {
           let effectiveScore = c.score;
+          let violationCount = 0;
+          let unclearCount = 0;
+          let compliantCount = 0;
           for (const f of v.clauseFindings) {
             const policyId = (f.rule as { policyId?: string })?.policyId;
             if (policyId !== c.policyId) continue;
+            if (f.complianceStatus === "VIOLATION") violationCount += 1;
+            else if (f.complianceStatus === "UNCLEAR") unclearCount += 1;
+            else if (f.complianceStatus === "COMPLIANT") compliantCount += 1;
             if (f.complianceStatus !== "VIOLATION" && f.complianceStatus !== "UNCLEAR") continue;
             if (!approvedByFindingId.has(f.id)) continue;
             const weight = ruleWeightByFindingId.get(f.id) ?? 1;
             effectiveScore = Math.min(100, effectiveScore + weight);
           }
+          const needsReview = unclearCount > 0 || violationCount > 0;
+          const status =
+            effectiveScore < 60
+              ? "NON_COMPLIANT"
+              : violationCount > 0
+                ? "NEEDS_REVIEW"
+                : unclearCount > 0
+                  ? "NEEDS_REVIEW"
+                  : "COMPLIANT";
           return {
             policyId: c.policyId,
             policyName: c.policy.name,
             score: c.score,
             effectiveScore,
-            status: c.status,
+            status,
+            unclearCount,
+            violationCount,
+            compliantCount,
+            needsReview,
           };
         });
       })(),
@@ -110,6 +129,7 @@ export default async function ContractDetailPage({
             exceptionId: ex?.id ?? null,
             exceptionStatus: ex?.status ?? null,
             isOverridden: isOverridden ?? false,
+            unclearReason: (f as { unclearReason?: string | null }).unclearReason ?? null,
           };
         });
       })(),

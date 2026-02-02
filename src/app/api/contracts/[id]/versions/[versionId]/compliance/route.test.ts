@@ -57,6 +57,11 @@ describe("GET /api/contracts/[id]/versions/[versionId]/compliance", () => {
         riskType: "LEGAL",
         recommendation: "Clause required by policy is missing or not detected.",
         rule: { policyId: "p-1", weight: 5 },
+        foundText: null,
+        foundValue: null,
+        confidence: null,
+        parseNotes: null,
+        unclearReason: null,
       },
     ] as Awaited<ReturnType<typeof clauseFindingRepo.findManyClauseFindingsByContractVersion>>);
     vi.mocked(exceptionRepo.findApprovedExceptionsByContractVersion).mockResolvedValue([]);
@@ -91,9 +96,46 @@ describe("GET /api/contracts/[id]/versions/[versionId]/compliance", () => {
     expect(json.compliances[0].policyName).toBe("Standard Policy");
     expect(json.compliances[0].rawScore).toBe(85);
     expect(json.compliances[0].effectiveScore).toBe(85);
+    expect(json.compliances[0].unclearCount).toBe(0);
+    expect(json.compliances[0].violationCount).toBe(1);
+    expect(json.compliances[0].compliantCount).toBe(0);
+    expect(json.compliances[0].needsReview).toBe(true);
     expect(json.findings).toHaveLength(1);
     expect(json.findings[0].complianceStatus).toBe("VIOLATION");
     expect(json.findings[0].isOverridden).toBe(false);
+    expect(json.findings[0].unclearReason).toBe(null);
+  });
+
+  it("returns unclearCount and findings include unclearReason (STEP 8C)", async () => {
+    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockResolvedValue([
+      {
+        id: "f-1",
+        clauseType: "DATA_PRIVACY",
+        ruleId: "r-1",
+        complianceStatus: "UNCLEAR",
+        severity: "MEDIUM",
+        riskType: "DATA",
+        recommendation: null,
+        rule: { policyId: "p-1", weight: 5 },
+        foundText: "Data processed.",
+        foundValue: null,
+        confidence: 0.62,
+        parseNotes: null,
+        unclearReason: "LOW_CONFIDENCE",
+      },
+    ] as Awaited<ReturnType<typeof clauseFindingRepo.findManyClauseFindingsByContractVersion>>);
+    const res = await GET(new Request("http://x"), {
+      params: Promise.resolve({ id: contractId, versionId }),
+    });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.compliances[0].unclearCount).toBe(1);
+    expect(json.compliances[0].violationCount).toBe(0);
+    expect(json.compliances[0].compliantCount).toBe(0);
+    expect(json.compliances[0].needsReview).toBe(true);
+    expect(json.compliances[0].status).toBe("NEEDS_REVIEW");
+    expect(json.findings[0].complianceStatus).toBe("UNCLEAR");
+    expect(json.findings[0].unclearReason).toBe("LOW_CONFIDENCE");
   });
 
   it("returns effectiveScore increased when approved exception overrides finding", async () => {

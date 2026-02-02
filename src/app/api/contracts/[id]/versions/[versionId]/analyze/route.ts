@@ -73,6 +73,9 @@ export async function POST(
         ...(result.mode === "EVALUATE_EXTRACTED_CLAUSES"
           ? { mode: "EVALUATE_EXTRACTED_CLAUSES" as const }
           : {}),
+        ...(result.unclear && result.unclear.length > 0
+          ? { unclear: result.unclear }
+          : {}),
       },
     });
     return NextResponse.json(result);
