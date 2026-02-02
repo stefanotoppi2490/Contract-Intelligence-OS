@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, requireWorkspace, AuthError } from "@/core/services/security/rbac";
 import { createPolicyRuleSchema } from "@/lib/validations/policy";
@@ -29,16 +30,20 @@ export async function POST(
       );
     }
     const data = parsed.data;
-    const rule = await policyRuleRepo.createPolicyRule({
+    const createData = {
       policy: { connect: { id: policyId } },
       clauseType: data.clauseType,
       ruleType: data.ruleType,
-      expectedValue: data.expectedValue ?? undefined,
+      expectedValue:
+        data.expectedValue === null || data.expectedValue === undefined
+          ? undefined
+          : (data.expectedValue as Prisma.InputJsonValue),
       severity: data.severity ?? undefined,
       riskType: data.riskType ?? undefined,
       weight: data.weight,
       recommendation: data.recommendation,
-    });
+    } as Prisma.PolicyRuleCreateInput;
+    const rule = await policyRuleRepo.createPolicyRule(createData);
     return NextResponse.json({
       id: rule.id,
       clauseType: rule.clauseType,
@@ -47,7 +52,7 @@ export async function POST(
       severity: rule.severity,
       riskType: rule.riskType,
       weight: rule.weight,
-      recommendation: rule.recommendation,
+      recommendation: "recommendation" in rule ? (rule as { recommendation: string }).recommendation : null,
     });
   } catch (e) {
     if (e instanceof AuthError) {

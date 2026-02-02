@@ -26,7 +26,7 @@ export async function GET() {
           severity: r.severity,
           riskType: r.riskType,
           weight: r.weight,
-          recommendation: r.recommendation,
+          recommendation: "recommendation" in r ? (r as { recommendation: string }).recommendation : null,
         })),
       }))
     );

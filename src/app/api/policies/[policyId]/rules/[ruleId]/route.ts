@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, requireWorkspace, AuthError } from "@/core/services/security/rbac";
 import { updatePolicyRuleSchema } from "@/lib/validations/policy";
@@ -33,16 +34,23 @@ export async function PATCH(
       );
     }
     const data = parsed.data;
-    const updated = await policyRuleRepo.updatePolicyRule(ruleId, {
+    const updateData: Prisma.PolicyRuleUpdateInput = {
       ...(data.clauseType !== undefined && { clauseType: data.clauseType }),
       ...(data.ruleType !== undefined && { ruleType: data.ruleType }),
-      ...(data.expectedValue !== undefined && { expectedValue: data.expectedValue as object | null }),
+      ...(data.expectedValue !== undefined && {
+        expectedValue:
+          data.expectedValue === null
+            ? Prisma.JsonNull
+            : (data.expectedValue as Prisma.InputJsonValue),
+      }),
       ...(data.severity !== undefined && { severity: data.severity }),
       ...(data.riskType !== undefined && { riskType: data.riskType }),
       ...(data.weight !== undefined && { weight: data.weight }),
       ...(data.recommendation !== undefined && { recommendation: data.recommendation }),
-    });
-    return NextResponse.json({
+    };
+
+    const updated = await policyRuleRepo.updatePolicyRule(ruleId, updateData);
+    const payload = {
       id: updated.id,
       clauseType: updated.clauseType,
       ruleType: updated.ruleType,
@@ -50,8 +58,9 @@ export async function PATCH(
       severity: updated.severity,
       riskType: updated.riskType,
       weight: updated.weight,
-      recommendation: updated.recommendation,
-    });
+      recommendation: "recommendation" in updated ? (updated.recommendation ?? null) : null,
+    };
+    return NextResponse.json(payload);
   } catch (e) {
     if (e instanceof AuthError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
