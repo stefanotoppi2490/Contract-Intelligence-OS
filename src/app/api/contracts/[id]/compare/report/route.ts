@@ -1,3 +1,4 @@
+import type { LedgerEventType } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, AuthError } from "@/core/services/security/rbac";
@@ -63,7 +64,7 @@ export async function POST(
     await recordEvent({
       workspaceId,
       actorUserId: session.userId,
-      type: "REPORT_EXPORTED",
+      type: "REPORT_EXPORTED" as LedgerEventType,
       entityType: "VersionCompareReport",
       entityId: `${fromVersionId}-${toVersionId}`,
       contractId,
@@ -85,7 +86,9 @@ export async function POST(
         policyName: policy.name,
         workspaceName: workspace?.name ?? undefined,
       });
-      return new NextResponse(pdfBytes, {
+      const buffer = new ArrayBuffer(pdfBytes.byteLength);
+      new Uint8Array(buffer).set(pdfBytes);
+      return new NextResponse(new Blob([buffer], { type: "application/pdf" }), {
         status: 200,
         headers: {
           "Content-Type": "application/pdf",
