@@ -67,24 +67,29 @@ describe("versionCompare", () => {
       ])
     );
     vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockImplementation(
-      (versionId: string) =>
+      ((contractVersionId: string) =>
         Promise.resolve(
-          versionId === fromVersionId || versionId === toVersionId
+          contractVersionId === fromVersionId || contractVersionId === toVersionId
             ? makeCompliance(80)
             : null
-        ) as Promise<Awaited<ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>>>
+        )) as unknown as (contractVersionId: string, policyId: string) => ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>
     );
-    vi.mocked(exceptionRepo.findApprovedExceptionsByContractVersion).mockResolvedValue([]);
+    vi.mocked(exceptionRepo.findApprovedExceptionsByContractVersion).mockResolvedValue(
+      [] as Awaited<ReturnType<typeof exceptionRepo.findApprovedExceptionsByContractVersion>>
+    );
   });
 
   it("returns MISSING_ANALYSIS when from version has no compliance", async () => {
     vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockImplementation(
-      (versionId: string) =>
-        Promise.resolve(versionId === toVersionId ? makeCompliance(80) : null) as Promise<
-          Awaited<ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>>
-        >
+      ((contractVersionId: string) =>
+        Promise.resolve(contractVersionId === toVersionId ? makeCompliance(80) : null)) as unknown as (
+        contractVersionId: string,
+        policyId: string
+      ) => ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>
     );
-    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockResolvedValue([]);
+    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockResolvedValue(
+      [] as Awaited<ReturnType<typeof clauseFindingRepo.findManyClauseFindingsByContractVersion>>
+    );
 
     const outcome = await compareVersions({
       workspaceId,
@@ -102,12 +107,15 @@ describe("versionCompare", () => {
 
   it("returns MISSING_ANALYSIS when to version has no compliance", async () => {
     vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockImplementation(
-      (versionId: string) =>
-        Promise.resolve(versionId === fromVersionId ? makeCompliance(80) : null) as Promise<
-          Awaited<ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>>
-        >
+      ((contractVersionId: string) =>
+        Promise.resolve(contractVersionId === fromVersionId ? makeCompliance(80) : null)) as unknown as (
+        contractVersionId: string,
+        policyId: string
+      ) => ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>
     );
-    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockResolvedValue([]);
+    vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockResolvedValue(
+      [] as Awaited<ReturnType<typeof clauseFindingRepo.findManyClauseFindingsByContractVersion>>
+    );
 
     const outcome = await compareVersions({
       workspaceId,
@@ -125,9 +133,9 @@ describe("versionCompare", () => {
 
   it("detects MODIFIED when foundValue differs (JSON)", async () => {
     vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockImplementation(
-      (versionId: string) => {
+      ((contractVersionId: string) => {
         const rule = { policyId, weight: 3 };
-        if (versionId === fromVersionId) {
+        if (contractVersionId === fromVersionId) {
           return Promise.resolve([
             makeFinding({
               id: "f-1",
@@ -149,7 +157,7 @@ describe("versionCompare", () => {
             rule,
           }),
         ]);
-      }
+      }) as typeof clauseFindingRepo.findManyClauseFindingsByContractVersion
     );
 
     const outcome = await compareVersions({
@@ -169,15 +177,16 @@ describe("versionCompare", () => {
 
   it("detects status change VIOLATION → COMPLIANT", async () => {
     vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockImplementation(
-      (versionId: string) =>
-        Promise.resolve(
-          makeCompliance(versionId === fromVersionId ? 70 : 80)
-        ) as Promise<Awaited<ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>>>
+      ((contractVersionId: string) =>
+        Promise.resolve(makeCompliance(contractVersionId === fromVersionId ? 70 : 80))) as unknown as (
+        contractVersionId: string,
+        policyId: string
+      ) => ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>
     );
     vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockImplementation(
-      (versionId: string) => {
+      ((contractVersionId: string) => {
         const rule = { policyId, weight: 5 };
-        if (versionId === fromVersionId) {
+        if (contractVersionId === fromVersionId) {
           return Promise.resolve([
             makeFinding({
               id: "f-1",
@@ -199,7 +208,7 @@ describe("versionCompare", () => {
             rule,
           }),
         ]);
-      }
+      }) as typeof clauseFindingRepo.findManyClauseFindingsByContractVersion
     );
 
     const outcome = await compareVersions({
@@ -219,10 +228,10 @@ describe("versionCompare", () => {
 
   it("topDrivers sorted by abs(deltaImpact) desc, top 5", async () => {
     vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockResolvedValue(
-      makeCompliance(70)
+      makeCompliance(70) as Awaited<ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>>
     );
     vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockImplementation(
-      (versionId: string) => {
+      ((contractVersionId: string) => {
         const fromFindings = [
           makeFinding({
             id: "f-a",
@@ -262,9 +271,9 @@ describe("versionCompare", () => {
             rule: { policyId, weight: 3 },
           }),
         ];
-        if (versionId === fromVersionId) return Promise.resolve(fromFindings);
+        if (contractVersionId === fromVersionId) return Promise.resolve(fromFindings);
         return Promise.resolve(toFindings);
-      }
+      }) as typeof clauseFindingRepo.findManyClauseFindingsByContractVersion
     );
 
     const outcome = await compareVersions({
@@ -286,31 +295,32 @@ describe("versionCompare", () => {
 
   it("effective delta accounts for overridden findings (approved exceptions)", async () => {
     vi.mocked(contractComplianceRepo.findContractComplianceByVersionAndPolicy).mockImplementation(
-      (versionId: string) => {
-        const score = versionId === fromVersionId ? 75 : 75;
-        return Promise.resolve(makeCompliance(score));
-      }
+      ((contractVersionId: string) =>
+        Promise.resolve(makeCompliance(contractVersionId === fromVersionId ? 75 : 75))) as unknown as (
+        contractVersionId: string,
+        policyId: string
+      ) => ReturnType<typeof contractComplianceRepo.findContractComplianceByVersionAndPolicy>
     );
     vi.mocked(clauseFindingRepo.findManyClauseFindingsByContractVersion).mockImplementation(
-      (versionId: string) => {
+      ((contractVersionId: string) => {
         const rule = { policyId, weight: 10 };
         const finding = makeFinding({
-          id: versionId === fromVersionId ? "f-1" : "f-2",
+          id: contractVersionId === fromVersionId ? "f-1" : "f-2",
           clauseType: "DATA_RETENTION",
           ruleId: "r-1",
           complianceStatus: "VIOLATION",
           rule,
         });
         return Promise.resolve([finding]);
-      }
+      }) as typeof clauseFindingRepo.findManyClauseFindingsByContractVersion
     );
     vi.mocked(exceptionRepo.findApprovedExceptionsByContractVersion).mockImplementation(
-      (versionId: string) => {
-        if (versionId === fromVersionId) {
+      ((contractVersionId: string) => {
+        if (contractVersionId === fromVersionId) {
           return Promise.resolve([{ id: "ex-1", clauseFindingId: "f-1" }]);
         }
         return Promise.resolve([]);
-      }
+      }) as typeof exceptionRepo.findApprovedExceptionsByContractVersion
     );
 
     const outcome = await compareVersions({

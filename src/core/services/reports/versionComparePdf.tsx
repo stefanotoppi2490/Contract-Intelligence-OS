@@ -167,13 +167,14 @@ export async function buildComparePdf(
   result: VersionCompareResult,
   options: BuildComparePdfOptions
 ): Promise<Uint8Array> {
+  const element = React.createElement(CompareReportDocument, {
+    result,
+    contractTitle: options.contractTitle,
+    policyName: options.policyName,
+    workspaceName: options.workspaceName,
+  });
   const buffer = await renderToBuffer(
-    React.createElement(CompareReportDocument, {
-      result,
-      contractTitle: options.contractTitle,
-      policyName: options.policyName,
-      workspaceName: options.workspaceName,
-    })
+    element as React.ReactElement<React.ComponentProps<typeof Document>>
   );
   return new Uint8Array(buffer);
 }
