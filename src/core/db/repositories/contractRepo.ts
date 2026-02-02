@@ -105,6 +105,14 @@ export function findManyContracts(args?: Prisma.ContractFindManyArgs) {
   return prisma.contract.findMany(args ?? {});
 }
 
+export function findManyContractsByIds(ids: string[]) {
+  if (ids.length === 0) return Promise.resolve([]);
+  return prisma.contract.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, title: true },
+  });
+}
+
 export function listContracts(
   workspaceId: string,
   filters?: ListContractsFilters,

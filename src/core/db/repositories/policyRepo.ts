@@ -24,6 +24,14 @@ export function findManyPolicies(args?: Prisma.PolicyFindManyArgs) {
   return prisma.policy.findMany(args ?? {});
 }
 
+export function findManyPoliciesByIds(ids: string[]) {
+  if (ids.length === 0) return Promise.resolve([]);
+  return prisma.policy.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true },
+  });
+}
+
 export function findManyPoliciesByWorkspace(
   workspaceId: string,
   args?: Omit<Prisma.PolicyFindManyArgs, "where">

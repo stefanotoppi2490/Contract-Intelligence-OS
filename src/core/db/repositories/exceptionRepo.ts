@@ -64,6 +64,14 @@ export function findManyExceptionRequests(args?: Prisma.ExceptionRequestFindMany
   return prisma.exceptionRequest.findMany(args ?? {});
 }
 
+export function findManyExceptionRequestsByIds(ids: string[]) {
+  if (ids.length === 0) return Promise.resolve([]);
+  return prisma.exceptionRequest.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, title: true, clauseType: true },
+  });
+}
+
 export function findManyExceptionRequestsByWorkspace(
   workspaceId: string,
   filters?: { status?: ExceptionStatus; contractId?: string; policyId?: string },

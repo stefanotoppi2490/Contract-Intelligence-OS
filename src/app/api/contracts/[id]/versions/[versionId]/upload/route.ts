@@ -98,7 +98,7 @@ export async function POST(
       entityId: doc.id,
       contractId,
       contractVersionId: versionId,
-      metadata: { fileName: doc.originalName, mimeType: doc.mimeType, size: doc.size },
+      metadata: { fileName: doc.originalName, originalName: doc.originalName, mimeType: doc.mimeType, size: doc.size },
     });
     return NextResponse.json({
       id: doc.id,

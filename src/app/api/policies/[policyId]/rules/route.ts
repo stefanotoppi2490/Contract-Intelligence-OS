@@ -52,7 +52,7 @@ export async function POST(
       entityType: "PolicyRule",
       entityId: rule.id,
       policyId: policyId,
-      metadata: { clauseType: rule.clauseType, ruleType: rule.ruleType },
+      metadata: { clauseType: rule.clauseType, ruleType: rule.ruleType, weight: rule.weight },
     });
     return NextResponse.json({
       id: rule.id,

@@ -43,7 +43,7 @@ export async function POST(
       contractVersionId: exception.contractVersionId,
       policyId: exception.policyId ?? undefined,
       exceptionId,
-      metadata: { clauseType: exception.clauseType ?? undefined },
+      metadata: { clauseType: exception.clauseType ?? undefined, title: exception.title },
     });
     return NextResponse.json({
       id: exceptionId,

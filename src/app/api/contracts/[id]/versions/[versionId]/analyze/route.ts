@@ -61,7 +61,7 @@ export async function POST(
       contractId,
       contractVersionId: versionId,
       policyId: policy.id,
-      metadata: { policyId: policy.id, rawScore: result.score, violationsCount: result.violationsCount },
+      metadata: { policyId: policy.id, rawScore: result.score, effectiveScore: result.score, violationsCount: result.violationsCount },
     });
     return NextResponse.json(result);
   } catch (e) {

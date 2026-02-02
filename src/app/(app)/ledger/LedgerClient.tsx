@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 
 const EVENT_TYPES = [
   "CONTRACT_UPLOADED",
@@ -29,7 +30,71 @@ type LedgerEvent = {
   exceptionId: string | null;
   metadata: unknown;
   createdAt: string;
+  summary: string;
 };
+
+function EventRow({ event: e }: { event: LedgerEvent }) {
+  const [showDetails, setShowDetails] = useState(false);
+  const isExceptionEvent =
+    e.type === "EXCEPTION_REQUESTED" ||
+    e.type === "EXCEPTION_APPROVED" ||
+    e.type === "EXCEPTION_REJECTED" ||
+    e.type === "EXCEPTION_WITHDRAWN";
+  return (
+    <>
+      <tr className="border-b border-muted/50">
+        <td className="py-1.5 pr-2 text-muted-foreground whitespace-nowrap">
+          {new Date(e.createdAt).toLocaleString()}
+        </td>
+        <td className="py-1.5 pr-2 font-mono text-xs">{e.type}</td>
+        <td className="py-1.5 pr-2 max-w-md">{e.summary}</td>
+        <td className="py-1.5 pr-2">
+          <span className="font-mono text-xs">{e.entityType}</span>
+          {e.entityId && (
+            <>
+              {" "}
+              {isExceptionEvent ? (
+                <Link href={`/exceptions/${e.entityId}`} className="text-primary hover:underline">
+                  {e.entityId.slice(0, 8)}…
+                </Link>
+              ) : (
+                <span className="text-muted-foreground">{e.entityId.slice(0, 12)}…</span>
+              )}
+            </>
+          )}
+        </td>
+        <td className="py-1.5 pr-2">
+          {e.contractId ? (
+            <Link href={`/contracts/${e.contractId}`} className="text-primary hover:underline">
+              {e.contractId.slice(0, 8)}…
+            </Link>
+          ) : (
+            "—"
+          )}
+        </td>
+        <td className="py-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 text-xs"
+            onClick={() => setShowDetails((x) => !x)}
+          >
+            {showDetails ? "Hide" : "Details"}
+          </Button>
+        </td>
+      </tr>
+      {showDetails && (
+        <tr className="border-b border-muted/50 bg-muted/20">
+          <td colSpan={6} className="py-2 px-2">
+            <pre className="text-xs text-muted-foreground overflow-x-auto whitespace-pre-wrap break-words">
+              {e.metadata != null ? JSON.stringify(e.metadata, null, 2) : "—"}
+            </pre>
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
 
 export function LedgerClient() {
   const [events, setEvents] = useState<LedgerEvent[]>([]);
@@ -95,46 +160,15 @@ export function LedgerClient() {
                   <tr className="border-b">
                     <th className="text-left py-2 pr-2">Time</th>
                     <th className="text-left py-2 pr-2">Type</th>
+                    <th className="text-left py-2 pr-2">Summary</th>
                     <th className="text-left py-2 pr-2">Entity</th>
                     <th className="text-left py-2 pr-2">Contract</th>
-                    <th className="text-left py-2">Metadata</th>
+                    <th className="text-left py-2 w-16">Details</th>
                   </tr>
                 </thead>
                 <tbody>
                   {events.map((e) => (
-                    <tr key={e.id} className="border-b border-muted/50">
-                      <td className="py-1.5 pr-2 text-muted-foreground whitespace-nowrap">
-                        {new Date(e.createdAt).toLocaleString()}
-                      </td>
-                      <td className="py-1.5 pr-2 font-mono text-xs">{e.type}</td>
-                      <td className="py-1.5 pr-2">
-                        <span className="font-mono text-xs">{e.entityType}</span>
-                        {e.entityId && (
-                          <>
-                            {" "}
-                            {e.type === "EXCEPTION_REQUESTED" || e.type === "EXCEPTION_APPROVED" || e.type === "EXCEPTION_REJECTED" || e.type === "EXCEPTION_WITHDRAWN" ? (
-                              <Link href={`/exceptions/${e.entityId}`} className="text-primary hover:underline">
-                                {e.entityId.slice(0, 8)}…
-                              </Link>
-                            ) : (
-                              <span className="text-muted-foreground">{e.entityId.slice(0, 12)}…</span>
-                            )}
-                          </>
-                        )}
-                      </td>
-                      <td className="py-1.5 pr-2">
-                        {e.contractId ? (
-                          <Link href={`/contracts/${e.contractId}`} className="text-primary hover:underline">
-                            {e.contractId.slice(0, 8)}…
-                          </Link>
-                        ) : (
-                          "—"
-                        )}
-                      </td>
-                      <td className="py-1.5 text-muted-foreground text-xs max-w-[200px] truncate">
-                        {e.metadata != null ? JSON.stringify(e.metadata) : "—"}
-                      </td>
-                    </tr>
+                    <EventRow key={e.id} event={e} />
                   ))}
                 </tbody>
               </table>
