@@ -96,9 +96,12 @@ export function ExceptionsClient({
                     >
                       {e.status}
                     </span>
-                    <Button size="sm" variant="outline" asChild>
-                      <Link href={`/exceptions/${e.id}`}>View</Link>
-                    </Button>
+                    <Link
+                      href={`/exceptions/${e.id}`}
+                      className="inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors border border-input bg-background hover:bg-accent hover:text-accent-foreground h-9 px-3"
+                    >
+                      View
+                    </Link>
                   </div>
                 </li>
               ))}
