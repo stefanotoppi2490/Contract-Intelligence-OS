@@ -4,7 +4,7 @@
 
 import { prisma } from "../prisma";
 import type { ClauseTaxonomy } from "@prisma/client";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 export type ClauseExtractionCreate = {
   clauseType: ClauseTaxonomy;
