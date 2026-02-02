@@ -71,6 +71,11 @@ export default async function ContractDetailPage({
         severity: f.severity,
         riskType: f.riskType,
         recommendation: f.recommendation,
+        foundText: f.foundText ?? null,
+        foundValue: f.foundValue ?? null,
+        confidence: f.confidence ?? null,
+        parseNotes: f.parseNotes ?? null,
+        expectedValue: f.rule?.expectedValue ?? null,
       })),
     })),
   };

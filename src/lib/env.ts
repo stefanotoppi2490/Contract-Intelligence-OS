@@ -13,6 +13,9 @@ const envSchema = z.object({
   AUTH_GOOGLE_SECRET: z.string().optional(),
   // Vercel Blob (optional in dev; required for upload on Vercel)
   BLOB_READ_WRITE_TOKEN: z.string().min(1).optional(),
+  // Gemini (STEP 5B; optional so tests can run without key)
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
 });
 
 export type Env = z.infer<typeof envSchema>;

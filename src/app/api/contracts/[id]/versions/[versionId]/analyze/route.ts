@@ -59,6 +59,9 @@ export async function POST(
     if (e instanceof Error && e.message === "Policy not found") {
       return NextResponse.json({ error: e.message }, { status: 404 });
     }
+    if (e instanceof Error && e.message.includes("Contract text not ready")) {
+      return NextResponse.json({ error: e.message }, { status: 400 });
+    }
     throw e;
   }
 }

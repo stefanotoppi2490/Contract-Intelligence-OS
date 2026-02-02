@@ -32,6 +32,11 @@ type Finding = {
   severity: string | null;
   riskType: string | null;
   recommendation: string | null;
+  foundText: string | null;
+  foundValue: unknown;
+  confidence: number | null;
+  parseNotes: string | null;
+  expectedValue: unknown;
 };
 type Version = {
   id: string;
@@ -55,6 +60,68 @@ const ALLOWED_MIME = [
   "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   "text/plain",
 ];
+
+function formatValue(v: unknown): string {
+  if (v == null) return "—";
+  if (typeof v === "string" || typeof v === "number") return String(v);
+  return JSON.stringify(v);
+}
+
+function FindingRow({ finding: f }: { finding: Finding }) {
+  const [showExcerpt, setShowExcerpt] = useState(false);
+  const statusColor =
+    f.complianceStatus === "VIOLATION"
+      ? "text-red-600 dark:text-red-400"
+      : f.complianceStatus === "COMPLIANT"
+        ? "text-green-600 dark:text-green-400"
+        : f.complianceStatus === "UNCLEAR"
+          ? "text-amber-600 dark:text-amber-400"
+          : "";
+  return (
+    <li className="rounded border p-2 space-y-1">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-mono text-xs">{f.clauseType}</span>
+        <span className={statusColor}>{f.complianceStatus}</span>
+        {f.confidence != null && (
+          <span className="text-muted-foreground text-xs">
+            confidence {(f.confidence * 100).toFixed(0)}%
+          </span>
+        )}
+      </div>
+      <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-xs">
+        <span className="text-muted-foreground">Found:</span>
+        <span>{formatValue(f.foundValue)}</span>
+        <span className="text-muted-foreground">Expected:</span>
+        <span>{formatValue(f.expectedValue)}</span>
+      </div>
+      {f.complianceStatus === "UNCLEAR" && (f.parseNotes || (f.confidence != null && f.confidence < 0.5)) && (
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          {f.parseNotes ?? "Low confidence or value could not be parsed."}
+        </p>
+      )}
+      {f.foundText && (
+        <div className="pt-1">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs"
+            onClick={() => setShowExcerpt((x) => !x)}
+          >
+            {showExcerpt ? "Hide excerpt" : "Show excerpt"}
+          </Button>
+          {showExcerpt && (
+            <blockquote className="mt-1 pl-2 border-l-2 text-xs text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+              {f.foundText}
+            </blockquote>
+          )}
+        </div>
+      )}
+      {f.recommendation && (
+        <p className="text-xs text-muted-foreground">{f.recommendation}</p>
+      )}
+    </li>
+  );
+}
 
 function IngestionBadge({ status }: { status: string | null }) {
   if (!status) return null;
@@ -353,23 +420,9 @@ export function ContractDetailClient({
                     {v.findings.length > 0 && (
                       <div className="pt-2">
                         <p className="text-xs font-medium text-muted-foreground mb-1">Findings</p>
-                        <ul className="text-sm space-y-1 list-disc list-inside">
+                        <ul className="text-sm space-y-3 list-none pl-0">
                           {v.findings.map((f) => (
-                            <li key={f.id}>
-                              <span className="font-mono text-xs">{f.clauseType}</span>:{" "}
-                              <span
-                                className={
-                                  f.complianceStatus === "VIOLATION"
-                                    ? "text-red-600 dark:text-red-400"
-                                    : f.complianceStatus === "COMPLIANT"
-                                      ? "text-green-600 dark:text-green-400"
-                                      : ""
-                                }
-                              >
-                                {f.complianceStatus}
-                              </span>
-                              {f.recommendation && ` — ${f.recommendation}`}
-                            </li>
+                            <FindingRow key={f.id} finding={f} />
                           ))}
                         </ul>
                       </div>

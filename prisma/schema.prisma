@@ -344,9 +344,16 @@ model ClauseFinding {
   complianceStatus  FindingComplianceStatus
   severity          Severity?
   riskType          RiskType?
-  recommendation    String?               @db.Text
-  createdAt         DateTime              @default(now())
-  updatedAt         DateTime              @updatedAt
+  recommendation    String?                @db.Text
+  // STEP 5B: AI extraction
+  foundText         String?                @db.Text  // excerpt from contract (max ~700 chars)
+  foundValue        Json?                  // parsed value
+  confidence        Float?                 // 0..1
+  parseNotes        String?                @db.Text
+  evaluatedAt       DateTime?
+  engineVersion     String?                // e.g. "5b-1"
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
 
   contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
   rule            PolicyRule      @relation(fields: [ruleId], references: [id], onDelete: Cascade)

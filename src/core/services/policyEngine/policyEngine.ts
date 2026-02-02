@@ -1,17 +1,30 @@
 /**
- * Deterministic policy engine (NO AI).
- * Evaluates contract version against policy rules; REQUIRED with no clause → VIOLATION.
- * Score: 100 - weight per VIOLATION; CRITICAL caps score at 40.
+ * Policy engine: STEP 5B AI-assisted extraction + deterministic evaluation.
+ * Loads ContractVersionText (TEXT_READY), runs aiClauseExtractor, then evaluates each rule
+ * deterministically. Score: 100 - weight per VIOLATION; CRITICAL caps at 40.
  */
 
-import type { FindingComplianceStatus, ComplianceStatusType, PolicyRuleType } from "@prisma/client";
+import type {
+  FindingComplianceStatus,
+  ComplianceStatusType,
+  PolicyRuleType,
+  ClauseTaxonomy,
+} from "@prisma/client";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
 import * as clauseFindingRepo from "@/core/db/repositories/clauseFindingRepo";
 import * as contractComplianceRepo from "@/core/db/repositories/contractComplianceRepo";
+import * as contractVersionTextRepo from "@/core/db/repositories/contractVersionTextRepo";
+import {
+  extractClauses,
+  type ExtractionResult,
+} from "@/core/services/policy/aiClauseExtractor";
 
 const SCORE_FULL = 100;
 const SCORE_CAP_IF_CRITICAL = 40;
+const CONFIDENCE_THRESHOLD = 0.5;
+const CONFIDENCE_THRESHOLD_FORBIDDEN = 0.6;
+const ENGINE_VERSION = "5b-1";
 
 export type AnalyzeInput = { contractVersionId: string; policyId: string };
 
@@ -25,10 +38,8 @@ export type AnalyzeResult = {
 };
 
 /**
- * Run deterministic policy evaluation for a contract version and policy.
- * For each rule: REQUIRED with no clause → VIOLATION; else NOT_APPLICABLE (for now).
- * Creates ClauseFinding records and one ContractCompliance.
- * Idempotent: re-running overwrites findings and compliance for this version+policy.
+ * Run AI extraction + deterministic evaluation for a contract version and policy.
+ * Requires ContractVersionText with status TEXT_READY. Idempotent.
  */
 export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
   const { contractVersionId, policyId } = input;
@@ -36,6 +47,14 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
   if (!policy) {
     throw new Error("Policy not found");
   }
+
+  const versionText = await contractVersionTextRepo.findContractVersionTextByVersionId(
+    contractVersionId
+  );
+  if (!versionText || versionText.status !== "TEXT_READY") {
+    throw new Error("Contract text not ready for analysis. Extract text first.");
+  }
+
   const rules = await policyRuleRepo.findManyPolicyRulesByPolicyId(policyId);
   if (rules.length === 0) {
     const score = SCORE_FULL;
@@ -54,20 +73,48 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     };
   }
 
+  const extractionResults = await extractClauses({
+    contractText: versionText.text,
+    rules: rules.map((r) => ({
+      ruleId: r.id,
+      clauseType: r.clauseType,
+      ruleType: r.ruleType,
+      expectedValue: r.expectedValue,
+    })),
+  });
+
+  const byRuleId = new Map<string, ExtractionResult>();
+  for (const e of extractionResults) {
+    byRuleId.set(e.ruleId, e);
+  }
+
+  const evaluatedAt = new Date();
   let totalDeduction = 0;
   let hasCriticalViolation = false;
 
   for (const rule of rules) {
-    const { complianceStatus, deduction, isCritical } = evaluateRule(rule);
+    const extracted = byRuleId.get(rule.id);
+    const { complianceStatus, deduction, isCritical } = evaluateRuleWithExtraction(
+      rule,
+      extracted ?? null
+    );
     totalDeduction += deduction;
     if (isCritical) hasCriticalViolation = true;
 
+    const recommendation =
+      complianceStatus === "VIOLATION" ? rule.recommendation : null;
     await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, {
       clauseType: rule.clauseType,
       complianceStatus,
       severity: rule.severity ?? undefined,
       riskType: rule.riskType ?? undefined,
-      recommendation: complianceStatus === "VIOLATION" ? rule.recommendation : null,
+      recommendation,
+      foundText: extracted?.foundText ?? null,
+      foundValue: extracted?.foundValue ?? undefined,
+      confidence: extracted?.confidence ?? undefined,
+      parseNotes: extracted?.notes ?? null,
+      evaluatedAt,
+      engineVersion: ENGINE_VERSION,
     });
   }
 
@@ -83,7 +130,8 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
   });
 
   const violationsCount = rules.filter((r) => {
-    const { complianceStatus } = evaluateRule(r);
+    const ext = byRuleId.get(r.id);
+    const { complianceStatus } = evaluateRuleWithExtraction(r, ext ?? null);
     return complianceStatus === "VIOLATION";
   }).length;
 
@@ -97,26 +145,147 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
   };
 }
 
-function evaluateRule(rule: { ruleType: PolicyRuleType; weight: number; severity: string | null }): {
+function evaluateRuleWithExtraction(
+  rule: {
+    id: string;
+    ruleType: PolicyRuleType;
+    weight: number;
+    severity: string | null;
+    expectedValue: unknown;
+    recommendation: string;
+  },
+  extracted: ExtractionResult | null
+): {
   complianceStatus: FindingComplianceStatus;
   deduction: number;
   isCritical: boolean;
 } {
-  if (rule.ruleType === "REQUIRED") {
-    // No clause extraction yet → treat as "no clause provided" → VIOLATION
-    const deduction = rule.weight;
-    const isCritical = rule.severity === "CRITICAL";
-    return {
-      complianceStatus: "VIOLATION",
-      deduction,
-      isCritical,
-    };
+  const present = extracted?.present ?? false;
+  const confidence = extracted?.confidence ?? 0;
+  const foundValue = extracted?.foundValue;
+
+  switch (rule.ruleType) {
+    case "REQUIRED": {
+      if (!present || confidence < CONFIDENCE_THRESHOLD) {
+        return {
+          complianceStatus: "VIOLATION",
+          deduction: rule.weight,
+          isCritical: rule.severity === "CRITICAL",
+        };
+      }
+      return {
+        complianceStatus: "COMPLIANT",
+        deduction: 0,
+        isCritical: false,
+      };
+    }
+    case "FORBIDDEN": {
+      if (present && confidence >= CONFIDENCE_THRESHOLD_FORBIDDEN) {
+        return {
+          complianceStatus: "VIOLATION",
+          deduction: rule.weight,
+          isCritical: rule.severity === "CRITICAL",
+        };
+      }
+      return {
+        complianceStatus: present ? "COMPLIANT" : "NOT_APPLICABLE",
+        deduction: 0,
+        isCritical: false,
+      };
+    }
+    case "MIN_VALUE":
+    case "MAX_VALUE":
+    case "ALLOWED_VALUES": {
+      if (!present) {
+        return {
+          complianceStatus: "VIOLATION",
+          deduction: rule.weight,
+          isCritical: rule.severity === "CRITICAL",
+        };
+      }
+      if (foundValue == null || confidence < CONFIDENCE_THRESHOLD) {
+        return {
+          complianceStatus: "UNCLEAR",
+          deduction: 0,
+          isCritical: false,
+        };
+      }
+      const expected = rule.expectedValue;
+      if (rule.ruleType === "MIN_VALUE") {
+        const numFound = toNumber(foundValue);
+        const numExpected = toNumber(expected);
+        if (numFound == null || numExpected == null) {
+          return {
+            complianceStatus: "UNCLEAR",
+            deduction: 0,
+            isCritical: false,
+          };
+        }
+        const compliant = numFound >= numExpected;
+        return {
+          complianceStatus: compliant ? "COMPLIANT" : "VIOLATION",
+          deduction: compliant ? 0 : rule.weight,
+          isCritical: compliant ? false : rule.severity === "CRITICAL",
+        };
+      }
+      if (rule.ruleType === "MAX_VALUE") {
+        const numFound = toNumber(foundValue);
+        const numExpected = toNumber(expected);
+        if (numFound == null || numExpected == null) {
+          return {
+            complianceStatus: "UNCLEAR",
+            deduction: 0,
+            isCritical: false,
+          };
+        }
+        const compliant = numFound <= numExpected;
+        return {
+          complianceStatus: compliant ? "COMPLIANT" : "VIOLATION",
+          deduction: compliant ? 0 : rule.weight,
+          isCritical: compliant ? false : rule.severity === "CRITICAL",
+        };
+      }
+      // ALLOWED_VALUES: expected is array of allowed values
+      const allowed = arrayFrom(expected);
+      const foundStr = String(foundValue).trim();
+      const compliant =
+        allowed.length === 0 ||
+        allowed.some((a) => String(a).trim().toLowerCase() === foundStr.toLowerCase());
+      return {
+        complianceStatus: compliant ? "COMPLIANT" : "VIOLATION",
+        deduction: compliant ? 0 : rule.weight,
+        isCritical: compliant ? false : rule.severity === "CRITICAL",
+      };
+    }
+    default:
+      return {
+        complianceStatus: "NOT_APPLICABLE",
+        deduction: 0,
+        isCritical: false,
+      };
   }
-  return {
-    complianceStatus: "NOT_APPLICABLE",
-    deduction: 0,
-    isCritical: false,
-  };
+}
+
+function toNumber(v: unknown): number | null {
+  if (typeof v === "number" && !Number.isNaN(v)) return v;
+  if (typeof v === "string") {
+    const n = Number(v);
+    return Number.isNaN(n) ? null : n;
+  }
+  if (typeof v === "object" && v !== null) {
+    const obj = v as Record<string, unknown>;
+    if (typeof obj.value === "number") return obj.value;
+    if (typeof obj.amount === "number") return obj.amount;
+    if (typeof obj.paymentDays === "number") return obj.paymentDays;
+    if (typeof obj.noticeDays === "number") return obj.noticeDays;
+  }
+  return null;
+}
+
+function arrayFrom(v: unknown): unknown[] {
+  if (Array.isArray(v)) return v;
+  if (v == null) return [];
+  return [v];
 }
 
 function scoreToStatus(score: number): ComplianceStatusType {
