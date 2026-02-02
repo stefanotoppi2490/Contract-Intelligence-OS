@@ -102,8 +102,10 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     if (isCritical) hasCriticalViolation = true;
 
     const recommendation =
-      complianceStatus === "VIOLATION" ? rule.recommendation : null;
-    await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, {
+      complianceStatus === "VIOLATION"
+        ? ((rule as { recommendation?: string }).recommendation ?? "Clause required by policy is missing or not detected.")
+        : null;
+    const findingData = {
       clauseType: rule.clauseType,
       complianceStatus,
       severity: rule.severity ?? undefined,
@@ -115,7 +117,8 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
       parseNotes: extracted?.notes ?? null,
       evaluatedAt,
       engineVersion: ENGINE_VERSION,
-    });
+    };
+    await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, findingData as Parameters<typeof clauseFindingRepo.upsertClauseFinding>[2]);
   }
 
   let score = Math.max(0, SCORE_FULL - totalDeduction);
@@ -152,7 +155,7 @@ function evaluateRuleWithExtraction(
     weight: number;
     severity: string | null;
     expectedValue: unknown;
-    recommendation: string;
+    recommendation?: string;
   },
   extracted: ExtractionResult | null
 ): {

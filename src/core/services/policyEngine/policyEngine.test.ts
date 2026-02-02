@@ -28,11 +28,13 @@ function makeRule(overrides: {
   riskType?: string | null;
   recommendation?: string;
   expectedValue?: unknown;
-}) {
+}): Awaited<ReturnType<typeof policyRuleRepo.findManyPolicyRulesByPolicyId>>[number] {
   return {
     id: overrides.id,
     policyId,
-    clauseType: overrides.clauseType ?? "TERMINATION",
+    clauseType: (overrides.clauseType ?? "TERMINATION") as Awaited<
+      ReturnType<typeof policyRuleRepo.findManyPolicyRulesByPolicyId>
+    >[number]["clauseType"],
     ruleType: overrides.ruleType,
     expectedValue: overrides.expectedValue ?? null,
     severity: overrides.severity ?? null,
@@ -43,7 +45,7 @@ function makeRule(overrides: {
       "Clause required by policy is missing or not detected.",
     createdAt: new Date(),
     updatedAt: new Date(),
-  };
+  } as Awaited<ReturnType<typeof policyRuleRepo.findManyPolicyRulesByPolicyId>>[number];
 }
 
 function extractionResult(overrides: {

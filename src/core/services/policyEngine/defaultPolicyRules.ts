@@ -3,6 +3,7 @@
  * Idempotent: call once per policy; creates exactly these 7 rules.
  */
 
+import { Prisma } from "@prisma/client";
 import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
 
 const DEFAULT_RULES: Array<{
@@ -77,12 +78,12 @@ export async function seedDefaultPolicyRules(policyId: string): Promise<number> 
       policy: { connect: { id: policyId } },
       clauseType: r.clauseType,
       ruleType: r.ruleType,
-      expectedValue: null,
+      expectedValue: Prisma.JsonNull,
       severity: r.severity,
       riskType: r.riskType,
       weight: r.weight,
       recommendation: r.recommendation,
-    });
+    } as Prisma.PolicyRuleCreateInput);
   }
   return DEFAULT_RULES.length;
 }
