@@ -177,6 +177,8 @@ enum LedgerEventType {
   POLICY_RULE_CREATED
   POLICY_RULE_UPDATED
   POLICY_RULE_DELETED
+  VERSION_COMPARED
+  REPORT_EXPORTED
 }
 
 // ─── Tenant & Auth ─────────────────────────────────────────────────────────

@@ -82,6 +82,10 @@ export function formatLedgerSummary(
       const ruleType = (m.ruleType as string) ?? "";
       return `Policy rule deleted: ${clauseType} ${ruleType}`;
     }
+    case "VERSION_COMPARED":
+      return `Version compared: ${policyName ?? event.policyId ?? "?"} (v${m.fromVersionNumber ?? "?"} → v${m.toVersionNumber ?? "?"})`;
+    case "REPORT_EXPORTED":
+      return `Report exported: ${policyName ?? event.policyId ?? "?"} (v${m.fromVersionNumber ?? "?"} → v${m.toVersionNumber ?? "?"})`;
     default:
       return `${event.type} — ${event.entityType} ${event.entityId}`;
   }

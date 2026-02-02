@@ -121,7 +121,17 @@ export default async function ContractDetailPage({
         <Link href="/contracts" className="text-sm text-muted-foreground hover:underline">
           ← Contracts
         </Link>
-        <h1 className="mt-2 text-2xl font-semibold">{contract.title}</h1>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <h1 className="text-2xl font-semibold">{contract.title}</h1>
+          {contract.versions.length >= 2 && (
+            <Link
+              href={`/contracts/${contract.id}/compare`}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Compare versions
+            </Link>
+          )}
+        </div>
         <p className="text-muted-foreground">
           {contract.counterparty.name} · {contract.contractType ?? "—"} · {contract.status}
         </p>
