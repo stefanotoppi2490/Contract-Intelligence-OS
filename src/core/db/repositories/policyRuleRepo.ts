@@ -24,3 +24,11 @@ export function findManyPolicyRulesByPolicyId(
 export function findManyPolicyRules(args?: Prisma.PolicyRuleFindManyArgs) {
   return prisma.policyRule.findMany(args ?? {});
 }
+
+export function updatePolicyRule(id: string, data: Prisma.PolicyRuleUpdateInput) {
+  return prisma.policyRule.update({ where: { id }, data });
+}
+
+export function deletePolicyRule(id: string) {
+  return prisma.policyRule.delete({ where: { id } });
+}

@@ -5,7 +5,7 @@ import { createWorkspaceSchema } from "@/lib/validations/workspace";
 import * as workspaceRepo from "@/core/db/repositories/workspaceRepo";
 import * as membershipRepo from "@/core/db/repositories/membershipRepo";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
-import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
+import { seedDefaultPolicyRules } from "@/core/services/policyEngine/defaultPolicyRules";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 
 export async function GET() {
@@ -49,37 +49,14 @@ export async function POST(req: Request) {
       user: { connect: { id: session.userId } },
       role: "ADMIN",
     });
-    // Seed default policy so Analysis UI has at least one policy
+    // Seed default policy with meaningful rules (idempotent: one policy per workspace)
     const defaultPolicy = await policyRepo.createPolicy({
       workspace: { connect: { id: workspace.id } },
       name: "Default Company Standard",
       description: "Default policy created with the workspace. Add or edit rules in Policies.",
       isActive: true,
     });
-    await policyRuleRepo.createPolicyRule({
-      policy: { connect: { id: defaultPolicy.id } },
-      clauseType: "TERMINATION",
-      ruleType: "REQUIRED",
-      severity: "MEDIUM",
-      riskType: "LEGAL",
-      weight: 5,
-    });
-    await policyRuleRepo.createPolicyRule({
-      policy: { connect: { id: defaultPolicy.id } },
-      clauseType: "LIABILITY",
-      ruleType: "REQUIRED",
-      severity: "HIGH",
-      riskType: "LEGAL",
-      weight: 7,
-    });
-    await policyRuleRepo.createPolicyRule({
-      policy: { connect: { id: defaultPolicy.id } },
-      clauseType: "CONFIDENTIALITY",
-      ruleType: "REQUIRED",
-      severity: "MEDIUM",
-      riskType: "LEGAL",
-      weight: 5,
-    });
+    await seedDefaultPolicyRules(defaultPolicy.id);
     await createAuditEvent({
       workspace: { connect: { id: workspace.id } },
       eventType: "workspace.created",

@@ -374,16 +374,17 @@ model Policy {
 }
 
 model PolicyRule {
-  id           String         @id @default(cuid())
-  policyId     String
-  clauseType   ClauseTaxonomy
-  ruleType     PolicyRuleType
-  expectedValue Json?          // string | number | json
-  severity     Severity?
-  riskType     RiskType?
-  weight       Int            @default(1) // deducted per VIOLATION
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  id             String         @id @default(cuid())
+  policyId       String
+  clauseType     ClauseTaxonomy
+  ruleType       PolicyRuleType
+  expectedValue  Json?          // string | number | json
+  severity       Severity?
+  riskType       RiskType?
+  weight         Int            @default(1) // deducted per VIOLATION
+  recommendation String         @db.Text // required; used when creating ClauseFinding for VIOLATION
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   policy         Policy          @relation(fields: [policyId], references: [id], onDelete: Cascade)
   clauseFindings ClauseFinding[]

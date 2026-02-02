@@ -12,6 +12,14 @@ export function findPolicyById(id: string) {
   });
 }
 
+/** For RBAC: ensure policy belongs to workspace. */
+export function findPolicyByWorkspaceAndId(workspaceId: string, policyId: string) {
+  return prisma.policy.findFirst({
+    where: { id: policyId, workspaceId },
+    include: { rules: true },
+  });
+}
+
 export function findManyPolicies(args?: Prisma.PolicyFindManyArgs) {
   return prisma.policy.findMany(args ?? {});
 }

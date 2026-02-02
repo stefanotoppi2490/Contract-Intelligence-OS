@@ -16,10 +16,10 @@ export default async function PoliciesPage() {
   }
   const workspaceId = session.currentWorkspaceId!;
   const policies = await policyRepo.findManyPoliciesByWorkspace(workspaceId);
-  const canCreate = ["LEGAL", "RISK", "ADMIN"].includes(session.role ?? "");
+  const canManage = ["LEGAL", "RISK", "ADMIN"].includes(session.role ?? "");
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6">
       <div>
         <Link href="/contracts" className="text-sm text-muted-foreground hover:underline">
           ← Contracts
@@ -35,9 +35,18 @@ export default async function PoliciesPage() {
           name: p.name,
           description: p.description ?? null,
           isActive: p.isActive,
-          rulesCount: p.rules?.length ?? 0,
+          rules: (p.rules ?? []).map((r) => ({
+            id: r.id,
+            clauseType: r.clauseType,
+            ruleType: r.ruleType,
+            expectedValue: r.expectedValue,
+            severity: r.severity,
+            riskType: r.riskType,
+            weight: r.weight,
+            recommendation: r.recommendation,
+          })),
         }))}
-        canCreate={canCreate}
+        canManage={canManage}
       />
     </div>
   );

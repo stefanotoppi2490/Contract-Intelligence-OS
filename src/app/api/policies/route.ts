@@ -3,9 +3,9 @@ import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, requireWorkspace, AuthError } from "@/core/services/security/rbac";
 import { createPolicySchema } from "@/lib/validations/policy";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
-import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
+import { seedDefaultPolicyRules } from "@/core/services/policyEngine/defaultPolicyRules";
 
-/** GET: list active policies for current workspace. */
+/** GET: list policies with rules for current workspace. Any role with workspace. */
 export async function GET() {
   try {
     const session = await getServerSessionWithWorkspace();
@@ -18,7 +18,16 @@ export async function GET() {
         name: p.name,
         description: p.description,
         isActive: p.isActive,
-        rulesCount: p.rules?.length ?? 0,
+        rules: (p.rules ?? []).map((r) => ({
+          id: r.id,
+          clauseType: r.clauseType,
+          ruleType: r.ruleType,
+          expectedValue: r.expectedValue,
+          severity: r.severity,
+          riskType: r.riskType,
+          weight: r.weight,
+          recommendation: r.recommendation,
+        })),
       }))
     );
   } catch (e) {
@@ -29,7 +38,7 @@ export async function GET() {
   }
 }
 
-/** POST: create policy with default rules. RBAC: LEGAL/RISK/ADMIN. */
+/** POST: create policy. Body: { name, description?, seedDefaults?: boolean }. RBAC: LEGAL/RISK/ADMIN. */
 export async function POST(req: Request) {
   try {
     const session = await getServerSessionWithWorkspace();
@@ -44,44 +53,23 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const { name, description } = parsed.data;
+    const { name, description, seedDefaults } = parsed.data;
     const policy = await policyRepo.createPolicy({
       workspace: { connect: { id: workspaceId } },
       name,
       description: description ?? null,
       isActive: true,
     });
-    // Default rules so findings appear when analyzing
-    await policyRuleRepo.createPolicyRule({
-      policy: { connect: { id: policy.id } },
-      clauseType: "TERMINATION",
-      ruleType: "REQUIRED",
-      severity: "MEDIUM",
-      riskType: "LEGAL",
-      weight: 5,
-    });
-    await policyRuleRepo.createPolicyRule({
-      policy: { connect: { id: policy.id } },
-      clauseType: "LIABILITY",
-      ruleType: "REQUIRED",
-      severity: "HIGH",
-      riskType: "LEGAL",
-      weight: 7,
-    });
-    await policyRuleRepo.createPolicyRule({
-      policy: { connect: { id: policy.id } },
-      clauseType: "CONFIDENTIALITY",
-      ruleType: "REQUIRED",
-      severity: "MEDIUM",
-      riskType: "LEGAL",
-      weight: 5,
-    });
+    let rulesCount = 0;
+    if (seedDefaults !== false) {
+      rulesCount = await seedDefaultPolicyRules(policy.id);
+    }
     return NextResponse.json({
       id: policy.id,
       name: policy.name,
       description: policy.description,
       isActive: policy.isActive,
-      rulesCount: 3,
+      rulesCount,
     });
   } catch (e) {
     if (e instanceof AuthError) {

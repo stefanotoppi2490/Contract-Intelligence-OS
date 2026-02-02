@@ -21,6 +21,7 @@ function makeRule(overrides: {
   severity?: string | null;
   clauseType?: string;
   riskType?: string | null;
+  recommendation?: string;
 }) {
   return {
     id: overrides.id,
@@ -31,6 +32,7 @@ function makeRule(overrides: {
     severity: overrides.severity ?? null,
     riskType: overrides.riskType ?? null,
     weight: overrides.weight ?? 1,
+    recommendation: overrides.recommendation ?? "Clause required by policy is missing or not detected.",
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -70,6 +72,26 @@ describe("policyEngine", () => {
         expect.objectContaining({
           complianceStatus: "VIOLATION",
           recommendation: "Clause required by policy is missing or not detected.",
+        })
+      );
+    });
+
+    it("uses rule.recommendation for VIOLATION finding", async () => {
+      vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+        makeRule({
+          id: "rule-custom",
+          ruleType: "REQUIRED",
+          weight: 10,
+          recommendation: "Custom recommendation text.",
+        }),
+      ]);
+      await analyze({ contractVersionId: versionId, policyId });
+      expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+        versionId,
+        "rule-custom",
+        expect.objectContaining({
+          complianceStatus: "VIOLATION",
+          recommendation: "Custom recommendation text.",
         })
       );
     });

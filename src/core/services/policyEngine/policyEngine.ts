@@ -56,7 +56,6 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
 
   let totalDeduction = 0;
   let hasCriticalViolation = false;
-  const recommendationViolation = "Clause required by policy is missing or not detected.";
 
   for (const rule of rules) {
     const { complianceStatus, deduction, isCritical } = evaluateRule(rule);
@@ -68,7 +67,7 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
       complianceStatus,
       severity: rule.severity ?? undefined,
       riskType: rule.riskType ?? undefined,
-      recommendation: complianceStatus === "VIOLATION" ? recommendationViolation : null,
+      recommendation: complianceStatus === "VIOLATION" ? rule.recommendation : null,
     });
   }
 

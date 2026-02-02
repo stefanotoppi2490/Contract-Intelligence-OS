@@ -279,11 +279,16 @@ export function ContractDetailClient({
                     </div>
                   ) : (
                     <>
-                      {(!versionText || versionText.status !== "TEXT_READY") ? (
+                      {!canAnalyze && (
+                        <p className="text-sm text-muted-foreground">
+                          Only LEGAL, RISK, or ADMIN can run analysis.
+                        </p>
+                      )}
+                      {canAnalyze && (!versionText || versionText.status !== "TEXT_READY") && (
                         <p className="text-sm text-muted-foreground">
                           Extract text first to enable analysis.
                         </p>
-                      ) : null}
+                      )}
                       <div className="flex flex-wrap items-end gap-2">
                         <div>
                           <Label className="text-sm">Policy</Label>
