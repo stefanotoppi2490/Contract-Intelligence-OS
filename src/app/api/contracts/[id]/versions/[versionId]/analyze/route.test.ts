@@ -25,13 +25,20 @@ vi.mock("@/core/services/policyEngine/policyEngine", () => ({
       violationsCount: 1,
     })
   ),
+  MissingExtractionsError: class MissingExtractionsError extends Error {
+    code = "MISSING_EXTRACTIONS";
+    constructor(message?: string) {
+      super(message ?? "Run AI clause extraction first");
+      this.name = "MissingExtractionsError";
+    }
+  },
 }));
 
 import { getServerSessionWithWorkspace } from "@/core/services/security/auth";
 import { requireRole, AuthError } from "@/core/services/security/rbac";
 import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
-import { analyze } from "@/core/services/policyEngine/policyEngine";
+import { analyze, MissingExtractionsError } from "@/core/services/policyEngine/policyEngine";
 
 describe("POST /api/contracts/[id]/versions/[versionId]/analyze", () => {
   const workspaceId = "ws-1";
@@ -107,5 +114,21 @@ describe("POST /api/contracts/[id]/versions/[versionId]/analyze", () => {
     const json = await res.json();
     expect(json.score).toBe(85);
     expect(json.status).toBe("COMPLIANT");
+  });
+
+  it("returns 409 with MISSING_EXTRACTIONS when analyze throws MissingExtractionsError", async () => {
+    vi.mocked(analyze).mockRejectedValue(new MissingExtractionsError());
+    const req = new Request("http://x", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ policyId }),
+    });
+    const res = await POST(req, {
+      params: Promise.resolve({ id: contractId, versionId }),
+    });
+    expect(res.status).toBe(409);
+    const data = await res.json();
+    expect(data.code).toBe("MISSING_EXTRACTIONS");
+    expect(data.error).toContain("Run AI clause extraction");
   });
 });

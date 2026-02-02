@@ -6,7 +6,7 @@ import * as contractRepo from "@/core/db/repositories/contractRepo";
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import { createAuditEvent } from "@/core/db/repositories/auditRepo";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
-import { analyze } from "@/core/services/policyEngine/policyEngine";
+import { analyze, MissingExtractionsError } from "@/core/services/policyEngine/policyEngine";
 
 /** getContractDetail includes versions; Prisma inference can omit it. */
 type ContractWithVersions = { versions: { id: string }[] };
@@ -65,12 +65,26 @@ export async function POST(
       contractId,
       contractVersionId: versionId,
       policyId: policy.id,
-      metadata: { policyId: policy.id, rawScore: result.score, effectiveScore: result.score, violationsCount: result.violationsCount },
+      metadata: {
+        policyId: policy.id,
+        rawScore: result.score,
+        effectiveScore: result.score,
+        violationsCount: result.violationsCount,
+        ...(result.mode === "EVALUATE_EXTRACTED_CLAUSES"
+          ? { mode: "EVALUATE_EXTRACTED_CLAUSES" as const }
+          : {}),
+      },
     });
     return NextResponse.json(result);
   } catch (e) {
     if (e instanceof AuthError) {
       return NextResponse.json({ error: e.message }, { status: e.status });
+    }
+    if (e instanceof MissingExtractionsError) {
+      return NextResponse.json(
+        { code: e.code, error: e.message },
+        { status: 409 }
+      );
     }
     if (e instanceof Error && e.message === "Policy not found") {
       return NextResponse.json({ error: e.message }, { status: 404 });

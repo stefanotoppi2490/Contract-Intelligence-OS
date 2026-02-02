@@ -127,8 +127,8 @@ function FindingRow({
           </Link>
         )}
         {f.confidence != null && (
-          <span className="text-muted-foreground text-xs">
-            confidence {(f.confidence * 100).toFixed(0)}%
+          <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+            {(f.confidence * 100).toFixed(0)}% confidence
           </span>
         )}
       </div>
@@ -219,6 +219,7 @@ export function ContractDetailClient({
   const [fullTextCache, setFullTextCache] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [analyzingVersionId, setAnalyzingVersionId] = useState<string | null>(null);
+  const [runningExtractionVersionId, setRunningExtractionVersionId] = useState<string | null>(null);
   const [selectedPolicyByVersion, setSelectedPolicyByVersion] = useState<Record<string, string>>({});
   const [exceptionModal, setExceptionModal] = useState<{ versionId: string; findingId: string } | null>(null);
   const [exceptionTitle, setExceptionTitle] = useState("");
@@ -374,7 +375,11 @@ export function ContractDetailClient({
       );
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Analysis failed");
+        if (res.status === 409 && data.code === "MISSING_EXTRACTIONS") {
+          setError("Run AI clause extraction first.");
+        } else {
+          setError(data.error ?? "Analysis failed");
+        }
         return;
       }
       router.refresh();
@@ -382,6 +387,27 @@ export function ContractDetailClient({
       setError("Analysis failed");
     } finally {
       setAnalyzingVersionId(null);
+    }
+  }
+
+  async function runClauseExtraction(versionId: string) {
+    if (!canAnalyze) return;
+    setError(null);
+    setRunningExtractionVersionId(versionId);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/versions/${versionId}/extractions/run`, {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Clause extraction failed");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Clause extraction failed");
+    } finally {
+      setRunningExtractionVersionId(null);
     }
   }
 
@@ -419,9 +445,9 @@ export function ContractDetailClient({
                   )}
                 </ul>
 
-                {/* Extract text */}
+                {/* Extract text + Run AI clause extraction (STEP 8B) */}
                 {hasDoc && (
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <Button
                       size="sm"
                       variant="secondary"
@@ -430,6 +456,16 @@ export function ContractDetailClient({
                     >
                       {extractingVersionId === v.id ? "Extracting…" : "Extract text"}
                     </Button>
+                    {versionText?.status === "TEXT_READY" && canAnalyze && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => runClauseExtraction(v.id)}
+                        disabled={runningExtractionVersionId !== null}
+                      >
+                        {runningExtractionVersionId === v.id ? "Running…" : "Run AI clause extraction"}
+                      </Button>
+                    )}
                   </div>
                 )}
 
@@ -457,6 +493,11 @@ export function ContractDetailClient({
                       {canAnalyze && (!versionText || versionText.status !== "TEXT_READY") && (
                         <p className="text-sm text-muted-foreground">
                           Extract text first to enable analysis.
+                        </p>
+                      )}
+                      {canAnalyze && versionText?.status === "TEXT_READY" && (!v.extractions || v.extractions.length === 0) && (
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                          Run AI clause extraction first to analyze against a policy.
                         </p>
                       )}
                       <div className="flex flex-wrap items-end gap-2">

@@ -131,14 +131,24 @@ export function ExceptionDetailClient({
             <CardTitle>Linked finding</CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-sm">
-            <p><span className="text-muted-foreground">Clause type:</span> {payload.finding.clauseType}</p>
-            <p><span className="text-muted-foreground">Status:</span> {payload.finding.complianceStatus}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <p><span className="text-muted-foreground">Clause type:</span> {payload.finding.clauseType}</p>
+              <p><span className="text-muted-foreground">Status:</span> {payload.finding.complianceStatus}</p>
+              {payload.finding.confidence != null && (
+                <span className="inline-flex items-center rounded px-1.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                  {(payload.finding.confidence * 100).toFixed(0)}% confidence
+                </span>
+              )}
+            </div>
             <p><span className="text-muted-foreground">Found:</span> {formatValue(payload.finding.foundValue)}</p>
             <p><span className="text-muted-foreground">Expected:</span> {formatValue(payload.finding.expectedValue)}</p>
             {payload.finding.foundText && (
-              <blockquote className="mt-2 pl-2 border-l-2 text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
-                {payload.finding.foundText}
-              </blockquote>
+              <div>
+                <p className="text-muted-foreground font-medium mb-1">Evidence excerpt</p>
+                <blockquote className="pl-2 border-l-2 text-muted-foreground whitespace-pre-wrap break-words max-h-32 overflow-y-auto">
+                  {payload.finding.foundText}
+                </blockquote>
+              </div>
             )}
             {payload.finding.recommendation && (
               <p className="text-muted-foreground">{payload.finding.recommendation}</p>

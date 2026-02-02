@@ -1,7 +1,8 @@
 /**
- * Policy engine: STEP 5B AI-assisted extraction + deterministic evaluation.
- * Loads ContractVersionText (TEXT_READY), runs aiClauseExtractor, then evaluates each rule
- * deterministically. Score: 100 - weight per VIOLATION; CRITICAL caps at 40.
+ * Policy engine: STEP 5B/8B.
+ * STEP 8B: When USE_CLAUSE_EXTRACTIONS=true, consumes ClauseExtraction (neutral evidence) and
+ * evaluates each rule deterministically. No AI during analyze.
+ * When false, legacy path: runs aiClauseExtractor then evaluates. Score: 100 - weight per VIOLATION; CRITICAL caps at 40.
  */
 
 import type {
@@ -15,6 +16,7 @@ import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
 import * as clauseFindingRepo from "@/core/db/repositories/clauseFindingRepo";
 import * as contractComplianceRepo from "@/core/db/repositories/contractComplianceRepo";
 import * as contractVersionTextRepo from "@/core/db/repositories/contractVersionTextRepo";
+import * as clauseExtractionRepo from "@/core/db/repositories/clauseExtractionRepo";
 import {
   extractClauses,
   type ExtractionResult,
@@ -26,6 +28,20 @@ const CONFIDENCE_THRESHOLD = 0.5;
 const CONFIDENCE_THRESHOLD_FORBIDDEN = 0.6;
 const ENGINE_VERSION = "5b-1";
 
+/** STEP 8B: default true; set USE_CLAUSE_EXTRACTIONS=false for legacy AI extraction path. */
+export function getUseClauseExtractions(): boolean {
+  return process.env.USE_CLAUSE_EXTRACTIONS !== "false";
+}
+
+/** STEP 8B: thrown when analysis requires ClauseExtraction but version has none. */
+export class MissingExtractionsError extends Error {
+  code = "MISSING_EXTRACTIONS" as const;
+  constructor(message = "Run AI clause extraction first") {
+    super(message);
+    this.name = "MissingExtractionsError";
+  }
+}
+
 export type AnalyzeInput = { contractVersionId: string; policyId: string };
 
 export type AnalyzeResult = {
@@ -35,6 +51,8 @@ export type AnalyzeResult = {
   status: ComplianceStatusType;
   findingsCount: number;
   violationsCount: number;
+  /** STEP 8B: set when analysis used ClauseExtraction (EVALUATE_EXTRACTED_CLAUSES). */
+  mode?: "EVALUATE_EXTRACTED_CLAUSES";
 };
 
 /**
@@ -73,19 +91,47 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     };
   }
 
-  const extractionResults = await extractClauses({
-    contractText: versionText.text,
-    rules: rules.map((r) => ({
-      ruleId: r.id,
-      clauseType: r.clauseType,
-      ruleType: r.ruleType,
-      expectedValue: r.expectedValue,
-    })),
-  });
+  const useClauseExtractions = getUseClauseExtractions();
+  let byRuleId: Map<string, ExtractionResult>;
 
-  const byRuleId = new Map<string, ExtractionResult>();
-  for (const e of extractionResults) {
-    byRuleId.set(e.ruleId, e);
+  if (useClauseExtractions) {
+    // STEP 8B: deterministic evaluation from ClauseExtraction (no AI)
+    const extractions = await clauseExtractionRepo.findManyByContractVersion(contractVersionId);
+    if (extractions.length === 0) {
+      throw new MissingExtractionsError("Run AI clause extraction first");
+    }
+    const byClauseType = new Map<ClauseTaxonomy, (typeof extractions)[number]>();
+    for (const e of extractions) {
+      byClauseType.set(e.clauseType, e);
+    }
+    byRuleId = new Map<string, ExtractionResult>();
+    for (const rule of rules) {
+      const extraction = byClauseType.get(rule.clauseType);
+      byRuleId.set(rule.id, {
+        ruleId: rule.id,
+        clauseType: rule.clauseType,
+        present: !!extraction,
+        foundText: extraction?.extractedText ?? null,
+        foundValue: (extraction?.extractedValue ?? null) as string | number | object | null,
+        confidence: extraction?.confidence ?? 0,
+        notes: null,
+      });
+    }
+  } else {
+    // Legacy: AI extraction then evaluation
+    const extractionResults = await extractClauses({
+      contractText: versionText.text,
+      rules: rules.map((r) => ({
+        ruleId: r.id,
+        clauseType: r.clauseType,
+        ruleType: r.ruleType,
+        expectedValue: r.expectedValue,
+      })),
+    });
+    byRuleId = new Map<string, ExtractionResult>();
+    for (const e of extractionResults) {
+      byRuleId.set(e.ruleId, e);
+    }
   }
 
   const evaluatedAt = new Date();
@@ -93,10 +139,28 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
   let hasCriticalViolation = false;
 
   for (const rule of rules) {
-    const extracted = byRuleId.get(rule.id);
+    const extracted = byRuleId.get(rule.id) ?? null;
+    // STEP 8B: when using extractions, no extraction for this clauseType -> REQUIRED=VIOLATION, else NOT_APPLICABLE
+    if (useClauseExtractions && !extracted?.present && rule.ruleType !== "REQUIRED") {
+      const findingData = {
+        clauseType: rule.clauseType,
+        complianceStatus: "NOT_APPLICABLE" as FindingComplianceStatus,
+        severity: rule.severity ?? undefined,
+        riskType: rule.riskType ?? undefined,
+        recommendation: null,
+        foundText: null,
+        foundValue: undefined,
+        confidence: undefined,
+        parseNotes: null,
+        evaluatedAt,
+        engineVersion: ENGINE_VERSION,
+      };
+      await clauseFindingRepo.upsertClauseFinding(contractVersionId, rule.id, findingData as Parameters<typeof clauseFindingRepo.upsertClauseFinding>[2]);
+      continue;
+    }
     const { complianceStatus, deduction, isCritical } = evaluateRuleWithExtraction(
       rule,
-      extracted ?? null
+      extracted
     );
     totalDeduction += deduction;
     if (isCritical) hasCriticalViolation = true;
@@ -134,6 +198,8 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
 
   const violationsCount = rules.filter((r) => {
     const ext = byRuleId.get(r.id);
+    const noExtractionNotRequired = useClauseExtractions && !ext?.present && (r.ruleType as string) !== "REQUIRED";
+    if (noExtractionNotRequired) return false;
     const { complianceStatus } = evaluateRuleWithExtraction(r, ext ?? null);
     return complianceStatus === "VIOLATION";
   }).length;
@@ -145,6 +211,7 @@ export async function analyze(input: AnalyzeInput): Promise<AnalyzeResult> {
     status,
     findingsCount: rules.length,
     violationsCount,
+    ...(useClauseExtractions ? { mode: "EVALUATE_EXTRACTED_CLAUSES" as const } : {}),
   };
 }
 

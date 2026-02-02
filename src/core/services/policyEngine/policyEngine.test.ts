@@ -1,11 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { analyze } from "./policyEngine";
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
+import { analyze, MissingExtractionsError } from "./policyEngine";
 
 vi.mock("@/core/db/repositories/policyRepo");
 vi.mock("@/core/db/repositories/policyRuleRepo");
 vi.mock("@/core/db/repositories/clauseFindingRepo");
 vi.mock("@/core/db/repositories/contractComplianceRepo");
 vi.mock("@/core/db/repositories/contractVersionTextRepo");
+vi.mock("@/core/db/repositories/clauseExtractionRepo");
 vi.mock("@/core/services/policy/aiClauseExtractor");
 
 import * as policyRepo from "@/core/db/repositories/policyRepo";
@@ -13,6 +14,7 @@ import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
 import * as clauseFindingRepo from "@/core/db/repositories/clauseFindingRepo";
 import * as contractComplianceRepo from "@/core/db/repositories/contractComplianceRepo";
 import * as contractVersionTextRepo from "@/core/db/repositories/contractVersionTextRepo";
+import * as clauseExtractionRepo from "@/core/db/repositories/clauseExtractionRepo";
 import { extractClauses } from "@/core/services/policy/aiClauseExtractor";
 
 const policyId = "policy-1";
@@ -67,6 +69,9 @@ function extractionResult(overrides: {
 }
 
 describe("policyEngine (STEP 5B)", () => {
+  beforeAll(() => {
+    process.env.USE_CLAUSE_EXTRACTIONS = "false";
+  });
   beforeEach(() => {
     vi.mocked(policyRepo.findPolicyById).mockResolvedValue({
       id: policyId,
@@ -276,5 +281,157 @@ describe("policyEngine (STEP 5B)", () => {
       contractText,
       rules: [{ ruleId: "r1", clauseType: "TERMINATION", ruleType: "REQUIRED", expectedValue: null }],
     });
+  });
+});
+
+describe("policyEngine STEP 8B (ClauseExtraction path)", () => {
+  beforeEach(() => {
+    process.env.USE_CLAUSE_EXTRACTIONS = "true";
+  });
+  afterEach(() => {
+    delete process.env.USE_CLAUSE_EXTRACTIONS;
+  });
+  beforeEach(() => {
+    vi.mocked(policyRepo.findPolicyById).mockResolvedValue({
+      id: policyId,
+      workspaceId: "ws-1",
+      name: "Test Policy",
+      description: null,
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as Awaited<ReturnType<typeof policyRepo.findPolicyById>>);
+    vi.mocked(contractVersionTextRepo.findContractVersionTextByVersionId).mockResolvedValue({
+      id: "vt-1",
+      contractVersionId: versionId,
+      text: contractText,
+      status: "TEXT_READY",
+      extractor: "TXT",
+      extractedAt: new Date(),
+      errorMessage: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    } as Awaited<ReturnType<typeof contractVersionTextRepo.findContractVersionTextByVersionId>>);
+    vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([]);
+    vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([]);
+    vi.mocked(clauseFindingRepo.upsertClauseFinding).mockResolvedValue({} as never);
+    vi.mocked(contractComplianceRepo.upsertContractCompliance).mockResolvedValue({} as never);
+  });
+
+  it("throws MissingExtractionsError when no extractions exist", async () => {
+    vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+      makeRule({ id: "r1", ruleType: "REQUIRED" }),
+    ]);
+    vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([]);
+
+    await expect(analyze({ contractVersionId: versionId, policyId })).rejects.toThrow(MissingExtractionsError);
+    await expect(analyze({ contractVersionId: versionId, policyId })).rejects.toMatchObject({
+      code: "MISSING_EXTRACTIONS",
+    });
+    expect(vi.mocked(clauseExtractionRepo.findManyByContractVersion)).toHaveBeenCalledWith(versionId);
+  });
+
+  it("produces ClauseFindings from ClauseExtraction without calling AI", async () => {
+    vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+      makeRule({ id: "r1", ruleType: "REQUIRED", clauseType: "TERMINATION" }),
+    ]);
+    vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([
+      {
+        id: "ex-1",
+        workspaceId: "ws-1",
+        contractId: "c-1",
+        contractVersionId: versionId,
+        clauseType: "TERMINATION",
+        extractedValue: { noticeDays: 30 },
+        extractedText: "Either party may terminate with 30 days notice.",
+        confidence: 0.9,
+        sourceLocation: null,
+        extractedBy: "AI",
+        createdAt: new Date(),
+      } as Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number],
+    ]);
+
+    const result = await analyze({ contractVersionId: versionId, policyId });
+
+    expect(result.violationsCount).toBe(0);
+    expect(result.score).toBe(100);
+    expect(result.mode).toBe("EVALUATE_EXTRACTED_CLAUSES");
+    expect(vi.mocked(clauseExtractionRepo.findManyByContractVersion)).toHaveBeenCalledWith(versionId);
+    expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+      versionId,
+      "r1",
+      expect.objectContaining({
+        complianceStatus: "COMPLIANT",
+        foundText: "Either party may terminate with 30 days notice.",
+        foundValue: { noticeDays: 30 },
+        confidence: 0.9,
+      })
+    );
+  });
+
+  it("MIN_VALUE uses extractedValue.noticeDays from ClauseExtraction", async () => {
+    vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+      makeRule({ id: "r1", ruleType: "MIN_VALUE", clauseType: "TERMINATION", weight: 10, expectedValue: 30 }),
+    ]);
+    vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([
+      {
+        id: "ex-1",
+        workspaceId: "ws-1",
+        contractId: "c-1",
+        contractVersionId: versionId,
+        clauseType: "TERMINATION",
+        extractedValue: { noticeDays: 45 },
+        extractedText: "45 days notice.",
+        confidence: 0.85,
+        sourceLocation: null,
+        extractedBy: "AI",
+        createdAt: new Date(),
+      } as Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number],
+    ]);
+
+    const result = await analyze({ contractVersionId: versionId, policyId });
+
+    expect(result.violationsCount).toBe(0);
+    expect(result.score).toBe(100);
+    expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+      versionId,
+      "r1",
+      expect.objectContaining({
+        complianceStatus: "COMPLIANT",
+        foundValue: { noticeDays: 45 },
+        confidence: 0.85,
+      })
+    );
+  });
+
+  it("no extraction for non-REQUIRED rule => NOT_APPLICABLE", async () => {
+    vi.mocked(policyRuleRepo.findManyPolicyRulesByPolicyId).mockResolvedValue([
+      makeRule({ id: "r1", ruleType: "MIN_VALUE", clauseType: "LIABILITY", expectedValue: 1000000 }),
+    ]);
+    vi.mocked(clauseExtractionRepo.findManyByContractVersion).mockResolvedValue([
+      {
+        id: "ex-1",
+        workspaceId: "ws-1",
+        contractId: "c-1",
+        contractVersionId: versionId,
+        clauseType: "TERMINATION",
+        extractedValue: { noticeDays: 30 },
+        extractedText: "30 days.",
+        confidence: 0.9,
+        sourceLocation: null,
+        extractedBy: "AI",
+        createdAt: new Date(),
+      } as Awaited<ReturnType<typeof clauseExtractionRepo.findManyByContractVersion>>[number],
+    ]);
+
+    const result = await analyze({ contractVersionId: versionId, policyId });
+
+    expect(result.violationsCount).toBe(0);
+    expect(result.score).toBe(100);
+    expect(vi.mocked(clauseFindingRepo.upsertClauseFinding)).toHaveBeenCalledWith(
+      versionId,
+      "r1",
+      expect.objectContaining({ complianceStatus: "NOT_APPLICABLE", foundText: null, confidence: undefined })
+    );
   });
 });

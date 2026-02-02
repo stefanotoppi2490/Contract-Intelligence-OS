@@ -16,6 +16,8 @@ const envSchema = z.object({
   // Gemini (STEP 5B; optional so tests can run without key)
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_MODEL: z.string().default("gemini-2.0-flash"),
+  // STEP 8B: use ClauseExtraction as input for analysis (default true; set to "false" for legacy AI extraction path)
+  USE_CLAUSE_EXTRACTIONS: z.string().optional(),
 });
 
 export type Env = z.infer<typeof envSchema>;
