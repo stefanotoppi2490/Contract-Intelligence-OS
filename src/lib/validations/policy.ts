@@ -27,7 +27,7 @@ export type CreatePolicyInput = z.infer<typeof createPolicySchema>;
 export const createPolicyRuleSchema = z.object({
   clauseType: clauseTaxonomy,
   ruleType: policyRuleType,
-  expectedValue: z.union([z.string(), z.number(), z.record(z.unknown())]).optional().nullable(),
+  expectedValue: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]).optional().nullable(),
   severity: severity.optional().nullable(),
   riskType: riskType.optional().nullable(),
   weight: z.number().int().min(0).max(100).default(1),
@@ -39,7 +39,7 @@ export type CreatePolicyRuleInput = z.infer<typeof createPolicyRuleSchema>;
 export const updatePolicyRuleSchema = z.object({
   clauseType: clauseTaxonomy.optional(),
   ruleType: policyRuleType.optional(),
-  expectedValue: z.union([z.string(), z.number(), z.record(z.unknown())]).optional().nullable(),
+  expectedValue: z.union([z.string(), z.number(), z.record(z.string(), z.unknown())]).optional().nullable(),
   severity: severity.optional().nullable(),
   riskType: riskType.optional().nullable(),
   weight: z.number().int().min(0).max(100).optional(),
