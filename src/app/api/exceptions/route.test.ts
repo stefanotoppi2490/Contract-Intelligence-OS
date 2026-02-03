@@ -53,7 +53,7 @@ describe("GET /api/exceptions", () => {
         updatedAt: new Date(),
         contractVersion: { contract: { title: "Contract A" } },
       },
-    ] as Awaited<ReturnType<typeof exceptionRepo.findManyExceptionRequestsByWorkspace>>);
+    ] as unknown as Awaited<ReturnType<typeof exceptionRepo.findManyExceptionRequestsByWorkspace>>);
     const res = await GET(new Request("http://x"));
     expect(res.status).toBe(200);
     const json = await res.json();

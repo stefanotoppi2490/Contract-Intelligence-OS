@@ -19,15 +19,19 @@ import { requireWorkspace, requireRole, AuthError } from "@/core/services/securi
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import { seedDefaultPolicyRules } from "@/core/services/policyEngine/defaultPolicyRules";
 
+const memberSession = {
+  user: { id: "u-1", email: "member@test.com", name: null, image: null },
+  userId: "u-1",
+  email: "member@test.com",
+  currentWorkspaceId: "ws-1",
+  role: "MEMBER" as const,
+};
+
 describe("GET /api/policies", () => {
   const workspaceId = "ws-1";
 
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "MEMBER",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(memberSession);
     vi.mocked(requireWorkspace).mockImplementation(() => {});
     vi.mocked(policyRepo.findManyPoliciesByWorkspace).mockResolvedValue([
       {
@@ -50,7 +54,7 @@ describe("GET /api/policies", () => {
           },
         ],
       },
-    ] as Awaited<ReturnType<typeof policyRepo.findManyPoliciesByWorkspace>>);
+    ] as unknown as Awaited<ReturnType<typeof policyRepo.findManyPoliciesByWorkspace>>);
   });
 
   it("returns policies with rules", async () => {
@@ -73,15 +77,19 @@ describe("GET /api/policies", () => {
   });
 });
 
+const adminSession = {
+  user: { id: "u-1", email: "admin@test.com", name: null, image: null },
+  userId: "u-1",
+  email: "admin@test.com",
+  currentWorkspaceId: "ws-1",
+  role: "ADMIN" as const,
+};
+
 describe("POST /api/policies", () => {
   const workspaceId = "ws-1";
 
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "ADMIN",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(adminSession);
     vi.mocked(requireWorkspace).mockImplementation(() => {});
     vi.mocked(requireRole).mockImplementation(() => {});
     vi.mocked(policyRepo.createPolicy).mockResolvedValue({

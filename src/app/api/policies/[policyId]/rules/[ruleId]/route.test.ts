@@ -17,17 +17,21 @@ import { requireRole, requireWorkspace, AuthError } from "@/core/services/securi
 import * as policyRepo from "@/core/db/repositories/policyRepo";
 import * as policyRuleRepo from "@/core/db/repositories/policyRuleRepo";
 
+const adminSession = {
+  user: { id: "u-1", email: "admin@test.com", name: null, image: null },
+  userId: "u-1",
+  email: "admin@test.com",
+  currentWorkspaceId: "ws-1",
+  role: "ADMIN" as const,
+};
+
 describe("PATCH /api/policies/[policyId]/rules/[ruleId]", () => {
   const workspaceId = "ws-1";
   const policyId = "p-1";
   const ruleId = "r-1";
 
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "ADMIN",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(adminSession);
     vi.mocked(requireWorkspace).mockImplementation(() => {});
     vi.mocked(requireRole).mockImplementation(() => {});
     vi.mocked(policyRepo.findPolicyByWorkspaceAndId).mockResolvedValue({
@@ -35,7 +39,7 @@ describe("PATCH /api/policies/[policyId]/rules/[ruleId]", () => {
       workspaceId,
       name: "Test",
       rules: [],
-    } as Awaited<ReturnType<typeof policyRepo.findPolicyByWorkspaceAndId>>);
+    } as unknown as Awaited<ReturnType<typeof policyRepo.findPolicyByWorkspaceAndId>>);
     vi.mocked(policyRuleRepo.findPolicyRuleById).mockResolvedValue({
       id: ruleId,
       policyId,
@@ -117,23 +121,29 @@ describe("PATCH /api/policies/[policyId]/rules/[ruleId]", () => {
   });
 });
 
+const riskSession = {
+  user: { id: "u-1", email: "risk@test.com", name: null, image: null },
+  userId: "u-1",
+  email: "risk@test.com",
+  currentWorkspaceId: "ws-1",
+  role: "RISK" as const,
+};
+
 describe("DELETE /api/policies/[policyId]/rules/[ruleId]", () => {
   const workspaceId = "ws-1";
   const policyId = "p-1";
   const ruleId = "r-1";
 
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "RISK",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(riskSession);
     vi.mocked(requireWorkspace).mockImplementation(() => {});
     vi.mocked(requireRole).mockImplementation(() => {});
     vi.mocked(policyRepo.findPolicyByWorkspaceAndId).mockResolvedValue({
       id: policyId,
       workspaceId,
-    } as Awaited<ReturnType<typeof policyRepo.findPolicyByWorkspaceAndId>>);
+      name: "Test",
+      rules: [],
+    } as unknown as Awaited<ReturnType<typeof policyRepo.findPolicyByWorkspaceAndId>>);
     vi.mocked(policyRuleRepo.findPolicyRuleById).mockResolvedValue({
       id: ruleId,
       policyId,

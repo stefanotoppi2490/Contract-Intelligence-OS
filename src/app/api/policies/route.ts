@@ -6,20 +6,39 @@ import * as policyRepo from "@/core/db/repositories/policyRepo";
 import { recordEvent } from "@/core/services/ledger/ledgerService";
 import { seedDefaultPolicyRules } from "@/core/services/policyEngine/defaultPolicyRules";
 
+type PolicyWithRules = {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  rules: Array<{
+    id: string;
+    clauseType: string;
+    ruleType: string;
+    expectedValue: unknown;
+    severity: string | null;
+    riskType: string | null;
+    weight: number;
+    recommendation: string | null;
+  }>;
+};
+
 /** GET: list policies with rules for current workspace. Any role with workspace. */
 export async function GET() {
   try {
     const session = await getServerSessionWithWorkspace();
     requireWorkspace(session);
     const workspaceId = session.currentWorkspaceId!;
-    const policies = await policyRepo.findManyPoliciesByWorkspace(workspaceId);
+    const policies = (await policyRepo.findManyPoliciesByWorkspace(workspaceId, {
+      include: { rules: true },
+    })) as unknown as PolicyWithRules[];
     return NextResponse.json(
       policies.map((p) => ({
         id: p.id,
         name: p.name,
         description: p.description,
         isActive: p.isActive,
-        rules: (p.rules ?? []).map((r) => ({
+        rules: p.rules.map((r) => ({
           id: r.id,
           clauseType: r.clauseType,
           ruleType: r.ruleType,
@@ -27,7 +46,7 @@ export async function GET() {
           severity: r.severity,
           riskType: r.riskType,
           weight: r.weight,
-          recommendation: "recommendation" in r ? (r as { recommendation: string }).recommendation : null,
+          recommendation: r.recommendation ?? null,
         })),
       }))
     );

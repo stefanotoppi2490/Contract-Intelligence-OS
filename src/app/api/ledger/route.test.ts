@@ -61,7 +61,7 @@ describe("GET /api/ledger", () => {
         metadata: { rawScore: 85 },
         createdAt: new Date(),
       },
-    ] as Awaited<ReturnType<typeof ledgerRepo.findManyLedgerEventsByWorkspace>>);
+    ] as unknown as Awaited<ReturnType<typeof ledgerRepo.findManyLedgerEventsByWorkspace>>);
     vi.mocked(contractRepo.findManyContractsByIds).mockResolvedValue([]);
     vi.mocked(policyRepo.findManyPoliciesByIds).mockResolvedValue([
       { id: "p-1", name: "Default Policy" },
