@@ -84,8 +84,14 @@ export function formatLedgerSummary(
     }
     case "VERSION_COMPARED" as LedgerEventType:
       return `Version compared: ${policyName ?? event.policyId ?? "?"} (v${m.fromVersionNumber ?? "?"} → v${m.toVersionNumber ?? "?"})`;
-    case "REPORT_EXPORTED" as LedgerEventType:
+    case "REPORT_EXPORTED" as LedgerEventType: {
+      const reportType = m.reportType as string | undefined;
+      if (reportType === "EXECUTIVE_SUMMARY") {
+        const score = (m.effectiveScore as number) ?? "?";
+        return `Executive summary exported: ${policyName ?? event.policyId ?? "?"} (score ${score})`;
+      }
       return `Report exported: ${policyName ?? event.policyId ?? "?"} (v${m.fromVersionNumber ?? "?"} → v${m.toVersionNumber ?? "?"})`;
+    }
     default:
       return `${event.type} — ${event.entityType} ${event.entityId}`;
   }

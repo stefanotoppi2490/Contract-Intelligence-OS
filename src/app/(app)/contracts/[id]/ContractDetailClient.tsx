@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -218,6 +218,33 @@ function IngestionBadge({ status }: { status: string | null }) {
 
 type PolicyOption = { id: string; name: string };
 
+type RiskCluster = {
+  riskType: string;
+  level: string;
+  violationCount: number;
+  unclearCount: number;
+  overriddenCount: number;
+  maxSeverity: string | null;
+  totalWeight: number;
+  topDrivers: { clauseType: string; severity: string | null; weight: number; reason: string }[];
+};
+type RiskSummaryData = {
+  aggregation: {
+    overallStatus: string;
+    rawScore: number;
+    effectiveScore: number;
+    clusters: RiskCluster[];
+    topDrivers: RiskCluster["topDrivers"];
+    generatedAt: string;
+  };
+  summary: {
+    headline: string;
+    paragraphs: string[];
+    keyRisks: string[];
+    recommendation: string;
+  };
+};
+
 export function ContractDetailClient({
   contractId,
   payload,
@@ -247,7 +274,75 @@ export function ContractDetailClient({
   const [exceptionTitle, setExceptionTitle] = useState("");
   const [exceptionJustification, setExceptionJustification] = useState("");
   const [exceptionSubmitting, setExceptionSubmitting] = useState(false);
+  const [riskSummaryCache, setRiskSummaryCache] = useState<Record<string, RiskSummaryData | null>>({});
+  const [riskSummaryLoading, setRiskSummaryLoading] = useState<string | null>(null);
+  const [riskSummaryPolicyByVersion, setRiskSummaryPolicyByVersion] = useState<Record<string, string>>({});
+  const [exportingRiskSummary, setExportingRiskSummary] = useState<string | null>(null);
   const router = useRouter();
+
+  function riskSummaryKey(versionId: string, policyId: string) {
+    return `${versionId}-${policyId}`;
+  }
+
+  async function fetchRiskSummary(versionId: string, policyId: string) {
+    const key = riskSummaryKey(versionId, policyId);
+    if (riskSummaryCache[key] !== undefined) return;
+    setRiskSummaryLoading(key);
+    try {
+      const res = await fetch(
+        `/api/contracts/${contractId}/versions/${versionId}/risk-summary?policyId=${encodeURIComponent(policyId)}`
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setRiskSummaryCache((prev) => ({ ...prev, [key]: null }));
+        return;
+      }
+      const data = await res.json();
+      setRiskSummaryCache((prev) => ({ ...prev, [key]: data }));
+    } finally {
+      setRiskSummaryLoading((k) => (k === key ? null : k));
+    }
+  }
+
+  useEffect(() => {
+    payload.versions.forEach((v) => {
+      if (v.compliances.length === 0) return;
+      const policyId = riskSummaryPolicyByVersion[v.id] ?? v.compliances[0]?.policyId;
+      if (!policyId) return;
+      const key = riskSummaryKey(v.id, policyId);
+      if (riskSummaryCache[key] !== undefined || riskSummaryLoading === key) return;
+      fetchRiskSummary(v.id, policyId);
+    });
+  }, [payload.versions, riskSummaryPolicyByVersion, riskSummaryCache, riskSummaryLoading]);
+
+  async function exportExecutiveSummary(versionId: string, policyId: string) {
+    const key = `${versionId}-export`;
+    setExportingRiskSummary(key);
+    try {
+      const res = await fetch(
+        `/api/contracts/${contractId}/versions/${versionId}/risk-summary/export`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ policyId }),
+        }
+      );
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error ?? "Export failed");
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "Executive_Summary.html";
+      a.click();
+      URL.revokeObjectURL(url);
+    } finally {
+      setExportingRiskSummary(null);
+    }
+  }
 
   function openRequestExceptionModal(findingId: string) {
     const version = payload.versions.find((v) => v.findings.some((f) => f.id === findingId));
@@ -557,6 +652,121 @@ export function ContractDetailClient({
                     </>
                   )}
                 </div>
+
+                {/* Executive Risk Summary — STEP 9A */}
+                {v.compliances.length > 0 && (
+                  <div className="rounded border bg-muted/20 p-3 space-y-2">
+                    <p className="text-sm font-medium">Executive Risk Summary</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Label htmlFor={`risk-policy-${v.id}`} className="text-xs text-muted-foreground">
+                        Policy:
+                      </Label>
+                      <select
+                        id={`risk-policy-${v.id}`}
+                        className="rounded border bg-background px-2 py-1 text-sm"
+                        value={riskSummaryPolicyByVersion[v.id] ?? v.compliances[0]?.policyId ?? ""}
+                        onChange={(e) => {
+                          const policyId = e.target.value;
+                          if (policyId) {
+                            setRiskSummaryPolicyByVersion((prev) => ({ ...prev, [v.id]: policyId }));
+                            fetchRiskSummary(v.id, policyId);
+                          }
+                        }}
+                      >
+                        {v.compliances.map((c) => (
+                          <option key={c.policyId} value={c.policyId}>
+                            {c.policyName}
+                          </option>
+                        ))}
+                      </select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={exportingRiskSummary === `${v.id}-export`}
+                        onClick={() => {
+                          const policyId = riskSummaryPolicyByVersion[v.id] ?? v.compliances[0]?.policyId;
+                          if (policyId) exportExecutiveSummary(v.id, policyId);
+                        }}
+                      >
+                        {exportingRiskSummary === `${v.id}-export` ? "Exporting…" : "Export Executive Summary"}
+                      </Button>
+                    </div>
+                    {(() => {
+                      const policyId = riskSummaryPolicyByVersion[v.id] ?? v.compliances[0]?.policyId ?? "";
+                      if (!policyId) return null;
+                      const key = riskSummaryKey(v.id, policyId);
+                      const loading = riskSummaryLoading === key;
+                      const data = riskSummaryCache[key];
+                      if (loading && !data) {
+                        return <p className="text-sm text-muted-foreground">Loading risk summary…</p>;
+                      }
+                      if (!data) {
+                        return null;
+                      }
+                      const { aggregation, summary } = data;
+                      return (
+                        <div className="space-y-3 pt-2 text-sm">
+                          <p className="font-medium">{summary.headline}</p>
+                          <p className="text-muted-foreground">
+                            Score: <span className="font-mono font-medium text-foreground">{aggregation.effectiveScore}</span>/100
+                            {aggregation.effectiveScore !== aggregation.rawScore && (
+                              <span className="ml-1 text-xs">(raw {aggregation.rawScore})</span>
+                            )}
+                          </p>
+                          <div className="overflow-x-auto">
+                            <table className="w-full border-collapse text-xs">
+                              <thead>
+                                <tr className="border-b">
+                                  <th className="text-left py-1 pr-2">Risk type</th>
+                                  <th className="text-left py-1 pr-2">Level</th>
+                                  <th className="text-left py-1 pr-2">Violations</th>
+                                  <th className="text-left py-1 pr-2">Unclear</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {aggregation.clusters.map((c) => (
+                                  <tr key={c.riskType} className="border-b border-muted">
+                                    <td className="py-1 pr-2">{c.riskType}</td>
+                                    <td className="py-1 pr-2">
+                                      <span
+                                        className={`inline-flex rounded px-1.5 py-0.5 text-xs font-medium ${
+                                          c.level === "HIGH"
+                                            ? "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                                            : c.level === "MEDIUM"
+                                              ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                                              : c.level === "NEEDS_REVIEW"
+                                                ? "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                                                : "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                        }`}
+                                      >
+                                        {c.level}
+                                      </span>
+                                    </td>
+                                    <td className="py-1 pr-2">{c.violationCount}</td>
+                                    <td className="py-1 pr-2">{c.unclearCount}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {summary.keyRisks.length > 0 && (
+                            <div>
+                              <p className="text-xs font-medium text-muted-foreground mb-1">Key risks</p>
+                              <ul className="list-disc pl-4 space-y-0.5 text-muted-foreground">
+                                {summary.keyRisks.map((k, i) => (
+                                  <li key={i}>{k}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+                          <p className="text-muted-foreground">
+                            <span className="font-medium text-foreground">Recommendation:</span> {summary.recommendation}
+                          </p>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
 
                 {/* Compliance score + findings */}
                 {(v.compliances.length > 0 || v.findings.length > 0) && (
