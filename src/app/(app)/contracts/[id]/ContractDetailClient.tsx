@@ -278,6 +278,8 @@ export function ContractDetailClient({
   const [riskSummaryLoading, setRiskSummaryLoading] = useState<string | null>(null);
   const [riskSummaryPolicyByVersion, setRiskSummaryPolicyByVersion] = useState<Record<string, string>>({});
   const [exportingRiskSummary, setExportingRiskSummary] = useState<string | null>(null);
+  const [narrativeCache, setNarrativeCache] = useState<Record<string, string>>({});
+  const [narrativeLoading, setNarrativeLoading] = useState<string | null>(null);
   const router = useRouter();
 
   function riskSummaryKey(versionId: string, policyId: string) {
@@ -314,6 +316,26 @@ export function ContractDetailClient({
       fetchRiskSummary(v.id, policyId);
     });
   }, [payload.versions, riskSummaryPolicyByVersion, riskSummaryCache, riskSummaryLoading]);
+
+  async function generateNarrative(versionId: string, policyId: string) {
+    const key = riskSummaryKey(versionId, policyId);
+    setNarrativeLoading(key);
+    try {
+      const res = await fetch(`/api/contracts/${contractId}/executive-narrative`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ policyId, versionId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? "Failed to generate narrative");
+        return;
+      }
+      setNarrativeCache((prev) => ({ ...prev, [key]: data.narrative ?? "" }));
+    } finally {
+      setNarrativeLoading((k) => (k === key ? null : k));
+    }
+  }
 
   async function exportExecutiveSummary(versionId: string, policyId: string) {
     const key = `${versionId}-export`;
@@ -762,6 +784,30 @@ export function ContractDetailClient({
                           <p className="text-muted-foreground">
                             <span className="font-medium text-foreground">Recommendation:</span> {summary.recommendation}
                           </p>
+                          {/* Executive Narrative (AI-generated) — STEP 9B */}
+                          <div className="pt-3 border-t border-muted space-y-2">
+                            <p className="text-xs font-medium text-muted-foreground">
+                              Executive Narrative (AI-generated)
+                            </p>
+                            {narrativeLoading === riskSummaryKey(v.id, policyId) ? (
+                              <p className="text-sm text-muted-foreground">Generating narrative…</p>
+                            ) : narrativeCache[riskSummaryKey(v.id, policyId)] ? (
+                              <p className="text-sm text-foreground whitespace-pre-wrap">
+                                {narrativeCache[riskSummaryKey(v.id, policyId)]}
+                              </p>
+                            ) : null}
+                            <p className="text-xs text-muted-foreground">Generated from structured risk data</p>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={narrativeLoading === riskSummaryKey(v.id, policyId)}
+                              onClick={() => generateNarrative(v.id, policyId)}
+                            >
+                              {narrativeCache[riskSummaryKey(v.id, policyId)]
+                                ? "Regenerate narrative"
+                                : "Generate narrative"}
+                            </Button>
+                          </div>
                         </div>
                       );
                     })()}
