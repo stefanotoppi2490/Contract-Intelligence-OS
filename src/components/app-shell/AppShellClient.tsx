@@ -6,6 +6,7 @@ import { useState } from "react";
 import { signOut } from "next-auth/react";
 
 const navItems = [
+  { href: "/dashboard", label: "Dashboard", icon: "dashboard" },
   { href: "/contracts", label: "Contracts", icon: "file" },
   { href: "/counterparties", label: "Counterparties", icon: "users" },
   { href: "/policies", label: "Policies", icon: "shield" },
@@ -17,6 +18,12 @@ const navItems = [
 function Icon({ name }: { name: (typeof navItems)[number]["icon"] }) {
   const c = "w-5 h-5 shrink-0";
   switch (name) {
+    case "dashboard":
+      return (
+        <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+        </svg>
+      );
     case "file":
       return (
         <svg className={c} fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -96,7 +103,7 @@ export function AppShellClient({
         <nav className="flex-1 overflow-y-auto py-3">
           <ul className="space-y-0.5 px-3">
             {navItems.map(({ href, label, icon }) => {
-              const active = pathname === href || (href !== "/contracts" && pathname.startsWith(href));
+              const active = pathname === href || pathname.startsWith(href + "/");
               return (
                 <li key={href}>
                   <Link

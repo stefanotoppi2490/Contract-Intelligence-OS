@@ -40,7 +40,7 @@ export function findManyPoliciesByWorkspace(
     ...args,
     where: { workspaceId, isActive: true },
     orderBy: args?.orderBy ?? { createdAt: "desc" },
-    include: args?.include ?? { rules: true },
+    ...(args?.select != null ? {} : { include: args?.include ?? { rules: true } }),
   });
 }
 
