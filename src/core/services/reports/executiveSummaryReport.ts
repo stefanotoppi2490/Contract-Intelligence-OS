@@ -3,6 +3,8 @@
  * Uses deterministic data only; narrative is optional AI-generated text.
  */
 
+import { buildExecutivePdfBuffer } from "./ExecutiveSummaryPdf";
+
 export type ExecutiveExportCluster = {
   riskType: string;
   level: string;
@@ -64,7 +66,9 @@ export function buildExecutiveMarkdown(model: ExecutiveExportModel): string {
   lines.push("| Risk type | Level | Violations | Unclear |");
   lines.push("|-----------|-------|-------------|---------|");
   for (const c of model.clusters) {
-    lines.push(`| ${c.riskType} | ${c.level} | ${c.violations} | ${c.unclear} |`);
+    lines.push(
+      `| ${c.riskType} | ${c.level} | ${c.violations} | ${c.unclear} |`,
+    );
   }
   lines.push("");
   if (model.keyRisks.length > 0) {
@@ -90,30 +94,43 @@ export function buildExecutiveMarkdown(model: ExecutiveExportModel): string {
     lines.push("");
   }
   lines.push("---");
-  lines.push(`Generated: ${model.generatedAt} · ${model.workspaceName} · ${model.policyName}`);
+  lines.push(
+    `Generated: ${model.generatedAt} · ${model.workspaceName} · ${model.policyName}`,
+  );
   return lines.join("\n");
 }
 
 export function buildExecutiveHtml(model: ExecutiveExportModel): string {
   const sections: string[] = [];
   sections.push(`<h1>Executive Risk Summary</h1>`);
-  sections.push(`<p><strong>Contract:</strong> ${esc(model.contractTitle)}</p>`);
-  sections.push(`<p><strong>Counterparty:</strong> ${esc(model.counterpartyName)}</p>`);
-  if (model.contractType) sections.push(`<p><strong>Type:</strong> ${esc(model.contractType)}</p>`);
+  sections.push(
+    `<p><strong>Contract:</strong> ${esc(model.contractTitle)}</p>`,
+  );
+  sections.push(
+    `<p><strong>Counterparty:</strong> ${esc(model.counterpartyName)}</p>`,
+  );
+  if (model.contractType)
+    sections.push(`<p><strong>Type:</strong> ${esc(model.contractType)}</p>`);
   sections.push(`<p><strong>Version:</strong> v${model.versionNumber}</p>`);
   sections.push(`<p><strong>Policy:</strong> ${esc(model.policyName)}</p>`);
-  if (model.startDate) sections.push(`<p><strong>Start:</strong> ${esc(model.startDate)}</p>`);
-  if (model.endDate) sections.push(`<p><strong>End:</strong> ${esc(model.endDate)}</p>`);
+  if (model.startDate)
+    sections.push(`<p><strong>Start:</strong> ${esc(model.startDate)}</p>`);
+  if (model.endDate)
+    sections.push(`<p><strong>End:</strong> ${esc(model.endDate)}</p>`);
   sections.push(`<h2>${esc(model.decision)}</h2>`);
   sections.push(
-    `<p>Score: <strong>${model.effectiveScore}/100</strong> (raw ${model.rawScore})</p>`
+    `<p>Score: <strong>${model.effectiveScore}/100</strong> (raw ${model.rawScore})</p>`,
   );
   sections.push(`<h3>Risk clusters</h3>`);
-  sections.push(`<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">`);
-  sections.push(`<tr><th>Risk type</th><th>Level</th><th>Violations</th><th>Unclear</th></tr>`);
+  sections.push(
+    `<table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse">`,
+  );
+  sections.push(
+    `<tr><th>Risk type</th><th>Level</th><th>Violations</th><th>Unclear</th></tr>`,
+  );
   for (const c of model.clusters) {
     sections.push(
-      `<tr><td>${esc(c.riskType)}</td><td>${esc(c.level)}</td><td>${c.violations}</td><td>${c.unclear}</td></tr>`
+      `<tr><td>${esc(c.riskType)}</td><td>${esc(c.level)}</td><td>${c.violations}</td><td>${c.unclear}</td></tr>`,
     );
   }
   sections.push(`</table>`);
@@ -132,11 +149,13 @@ export function buildExecutiveHtml(model: ExecutiveExportModel): string {
     sections.push(`</ul>`);
   }
   if (model.narrative) {
-    sections.push(`<h3>AI-generated narrative (from structured risk data)</h3>`);
+    sections.push(
+      `<h3>AI-generated narrative (from structured risk data)</h3>`,
+    );
     sections.push(`<p>${esc(model.narrative).replace(/\n/g, "<br />")}</p>`);
   }
   sections.push(
-    `<p style="margin-top:2em; font-size:0.9em; color:#666">Generated: ${esc(model.generatedAt)} · ${esc(model.workspaceName)} · ${esc(model.policyName)}</p>`
+    `<p style="margin-top:2em; font-size:0.9em; color:#666">Generated: ${esc(model.generatedAt)} · ${esc(model.workspaceName)} · ${esc(model.policyName)}</p>`,
   );
   return `<!DOCTYPE html>
 <html lang="en">
@@ -155,7 +174,8 @@ ${sections.join("\n")}
 </html>`;
 }
 
-export async function buildExecutivePdf(model: ExecutiveExportModel): Promise<Uint8Array> {
-  const { buildExecutivePdfBuffer } = await import("./ExecutiveSummaryPdf.js");
+export async function buildExecutivePdf(
+  model: ExecutiveExportModel,
+): Promise<Uint8Array> {
   return buildExecutivePdfBuffer(model);
 }
