@@ -3,6 +3,7 @@
  * Read-only; does not change scoring or findings.
  */
 
+import type { Severity } from "@prisma/client";
 import type { RiskAggregation, RiskCluster, RiskClusterTopDriver, RiskTypeKey, ClusterLevel, SeverityKey, OverallStatusKey } from "./riskAggregation";
 import * as clauseFindingRepo from "@/core/db/repositories/clauseFindingRepo";
 import * as contractComplianceRepo from "@/core/db/repositories/contractComplianceRepo";
@@ -87,7 +88,7 @@ export async function aggregateRisk(input: AggregateRiskInput): Promise<RiskAggr
         reason: f.recommendation ?? (f.complianceStatus === "VIOLATION" ? "Policy violation." : "Needs review."),
       }));
 
-    const allSeverities = forType.map((f) => f.severity).filter((s): s is string => s != null);
+    const allSeverities = forType.map((f) => f.severity).filter((s): s is Severity => s != null);
     const maxSev: SeverityKey | null =
       allSeverities.length
         ? (allSeverities.reduce((m, s) => (severityRank(s) < severityRank(m) ? s : m), allSeverities[0]) as SeverityKey)
