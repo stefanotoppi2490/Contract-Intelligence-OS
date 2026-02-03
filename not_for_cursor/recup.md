@@ -1638,3 +1638,978 @@ Deliverables
 ⸻
 
 non cambiare schema di score, non introdurre ML/AI nel policy engine, solo usare la confidence come regola deterministica
+
+Implement STEP 9A: Risk Aggregation & Deterministic Executive Summary (NO AI).
+
+Context
+
+- STEP 8C complete.
+- ClauseExtraction (AI) exists but is NOT used here.
+- ClauseFinding is deterministic and already includes:
+  - clauseType
+  - complianceStatus (COMPLIANT | VIOLATION | UNCLEAR | NOT_APPLICABLE | OVERRIDDEN)
+  - severity
+  - riskType
+  - weight
+  - confidence
+  - recommendation
+- ContractCompliance exists with:
+  - rawScore
+  - effectiveScore
+  - status (COMPLIANT | NEEDS_REVIEW | NON_COMPLIANT)
+- Exceptions can override findings.
+- Ledger exists.
+
+Goal
+Add a deterministic “management-level” risk aggregation and executive summary layer
+that:
+
+1. Aggregates risk per category (riskType).
+2. Produces an executive-friendly summary (deterministic, template-based).
+3. Is exportable and visible in UI.
+4. Does NOT change scoring, findings, or policy logic.
+
+This step is a READ-ONLY AGGREGATION layer.
+
+────────────────────────────────
+
+1. RISK AGGREGATION MODEL (IN-MEMORY)
+   ────────────────────────────────
+
+Create types:
+src/core/services/risk/riskAggregation.ts
+
+export type RiskCluster = {
+riskType: "LEGAL" | "FINANCIAL" | "OPERATIONAL" | "DATA" | "SECURITY";
+level: "OK" | "NEEDS_REVIEW" | "MEDIUM" | "HIGH";
+violationCount: number;
+unclearCount: number;
+overriddenCount: number;
+maxSeverity: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+totalWeight: number;
+topDrivers: Array<{
+clauseType: string;
+severity: string | null;
+weight: number;
+reason: string; // deterministic (from rule/recommendation)
+}>;
+};
+
+export type RiskAggregation = {
+contractId: string;
+contractVersionId: string;
+policyId: string;
+overallStatus: "COMPLIANT" | "NEEDS_REVIEW" | "NON_COMPLIANT";
+rawScore: number;
+effectiveScore: number;
+clusters: RiskCluster[];
+topDrivers: RiskCluster["topDrivers"]; // flattened, sorted by weight desc
+generatedAt: string;
+};
+
+No Prisma table required (compute on the fly).
+
+──────────────────────────────── 2) AGGREGATION LOGIC (DETERMINISTIC)
+────────────────────────────────
+
+Create:
+src/core/services/risk/aggregateRisk.ts
+
+Input:
+
+- contractVersionId
+- policyId
+
+Load:
+
+- ClauseFinding[] for the version + policy
+- ContractCompliance for the version + policy
+
+Aggregation rules:
+
+For each riskType:
+
+- violationCount = count findings with complianceStatus === VIOLATION
+- unclearCount = count findings with complianceStatus === UNCLEAR
+- overriddenCount = count findings with complianceStatus === OVERRIDDEN
+- maxSeverity = highest severity among findings
+- totalWeight = sum of weights for VIOLATION findings only
+- topDrivers:
+  - include only VIOLATION or UNCLEAR findings
+  - sort by weight desc
+  - max 3 per cluster
+
+Cluster level rules:
+
+- if any CRITICAL violation → HIGH
+- else if violationCount > 0 → MEDIUM
+- else if unclearCount > 0 → NEEDS_REVIEW
+- else → OK
+
+Overall status:
+
+- if effectiveScore < 60 → NON_COMPLIANT
+- else if any cluster.level in {HIGH, MEDIUM, NEEDS_REVIEW} → NEEDS_REVIEW
+- else → COMPLIANT
+
+──────────────────────────────── 3) EXECUTIVE SUMMARY (DETERMINISTIC TEXT)
+────────────────────────────────
+
+Create:
+src/core/services/risk/executiveSummary.ts
+
+Input:
+
+- RiskAggregation
+
+Output:
+export type ExecutiveSummary = {
+headline: string;
+paragraphs: string[];
+keyRisks: string[]; // bullets
+recommendation: string;
+};
+
+Rules (template-based):
+
+Headline:
+
+- COMPLIANT → "Contract compliant with company standards."
+- NEEDS_REVIEW → "Contract requires review before approval."
+- NON_COMPLIANT → "Contract is not compliant with company standards."
+
+Paragraph rules:
+
+- Always mention overallStatus + effectiveScore.
+- Mention top 1–2 risk clusters (by level then weight).
+
+Key risks bullets:
+
+- One bullet per top driver (max 3).
+
+Recommendation:
+
+- If NON_COMPLIANT → "Renegotiation or exception approval required."
+- If NEEDS_REVIEW → "Legal or risk review recommended."
+- If COMPLIANT → "Contract can proceed to approval."
+
+NO AI.
+NO randomness.
+
+──────────────────────────────── 4) API
+────────────────────────────────
+
+Add:
+GET /api/contracts/:id/versions/:versionId/risk-summary?policyId=...
+
+- RBAC: VIEWER can read
+- Validate workspace ownership
+- Returns:
+  {
+  aggregation: RiskAggregation,
+  summary: ExecutiveSummary
+  }
+
+──────────────────────────────── 5) UI
+────────────────────────────────
+
+A) Contract detail page (/contracts/[id])
+
+For each analyzed version add a new section:
+"Executive Risk Summary"
+
+Show:
+
+- Headline
+- Overall score (effective/raw)
+- Risk cluster table:
+  - Risk type
+  - Level badge
+  - Violations / Unclear
+- Key risks (bullets)
+- Recommendation
+
+This section is READ-ONLY.
+
+B) Export
+
+- Extend existing export (or add new button):
+  “Export Executive Summary”
+- PDF / HTML is fine (reuse existing export infra).
+- This is management-facing (1–2 pages max).
+
+──────────────────────────────── 6) LEDGER
+────────────────────────────────
+
+When executive summary is generated for export:
+
+- Record LedgerEvent:
+  type: REPORT_EXPORTED
+  metadata:
+  {
+  "reportType": "EXECUTIVE_SUMMARY",
+  "policyId": "...",
+  "effectiveScore": 72
+  }
+
+──────────────────────────────── 7) TESTS
+────────────────────────────────
+
+- aggregateRisk:
+  - correct cluster levels
+  - violations vs unclear logic
+- executiveSummary:
+  - deterministic output for same input
+  - headline matches overallStatus
+- API:
+  - workspace scoping
+  - missing policyId → 400
+
+──────────────────────────────── 8) MANUAL VERIFICATION CHECKLIST
+────────────────────────────────
+
+1. Analyze a contract with:
+   - at least 1 VIOLATION
+   - at least 1 UNCLEAR
+2. Open contract detail.
+3. See "Executive Risk Summary":
+   - clusters visible
+   - readable summary
+4. Export executive summary.
+5. Confirm PDF/HTML is readable by non-legal user.
+6. Verify no score or finding changed.
+
+Deliverables
+
+- aggregateRisk service
+- executiveSummary generator
+- API route
+- UI section
+- export integration
+- tests
+
+Implement STEP 9B: AI-assisted Executive Risk Narrative (presentation layer only).
+
+Context
+• STEP 9A complete: deterministic Executive Risk Summary exists.
+• Risk aggregation is already computed deterministically:
+• score (raw / effective)
+• violationCount
+• unclearCount
+• risk clusters per RiskType (LEGAL, FINANCIAL, DATA, etc.)
+• key risks list (top drivers)
+• ClauseExtraction and Policy Engine must NOT be changed.
+• All calculations, scores, and risk levels remain 100% deterministic.
+• We want to use AI only to phrase a human-readable executive narrative.
+• Output must be management-ready, not legal analysis.
+
+⸻
+
+Goal
+
+Add an AI-generated executive narrative that:
+• explains the risk situation in natural language
+• is based only on structured deterministic input
+• does NOT influence score, compliance, or decisions
+• is safe, reproducible, and auditable
+• is optional (can be regenerated without side effects)
+
+This narrative is presentation only.
+
+⸻
+
+Core Rule (VERY IMPORTANT)
+
+AI never sees raw contract text.
+AI never sees extracted clauses.
+AI never decides compliance or risk.
+
+AI receives only structured summary data.
+
+⸻
+
+1️⃣ Data fed to AI (STRICT INPUT)
+
+Create a DTO used as the only AI input:
+
+type ExecutiveNarrativeInput = {
+contractTitle: string
+policyName: string
+score: number
+status: "COMPLIANT" | "NEEDS_REVIEW" | "NON_COMPLIANT"
+
+violationCount: number
+unclearCount: number
+
+riskSummary: Array<{
+riskType: "LEGAL" | "FINANCIAL" | "DATA" | "OPERATIONAL" | "SECURITY"
+level: "OK" | "MEDIUM" | "NEEDS_REVIEW"
+violations: number
+unclear: number
+}>
+
+keyRisks: string[] // already human-readable, deterministic
+}
+
+No other data is allowed.
+
+⸻
+
+2️⃣ AI Service
+
+Create:
+
+src/core/services/reports/executiveNarrativeAI.ts
+
+Function:
+
+generateExecutiveNarrative(
+input: ExecutiveNarrativeInput
+): Promise<string>
+
+Responsibilities:
+• produce 1 short paragraph (3–5 sentences max)
+• business / executive tone
+• no legal advice
+• no suggestions outside provided data
+
+⸻
+
+3️⃣ AI Prompt (internal, fixed)
+
+Use this exact prompt structure:
+
+You are generating an executive-level risk summary for a business audience.
+
+Use ONLY the structured data provided.
+Do NOT invent facts.
+Do NOT add legal advice.
+Do NOT mention missing clauses or raw contract text.
+
+The goal is to explain:
+• overall risk posture
+• why the contract requires or does not require review
+• which risk areas are most relevant
+
+Keep the tone professional, neutral, and concise.
+
+Then pass the structured JSON input.
+
+⸻
+
+4️⃣ Deterministic Guardrails
+
+Before calling AI:
+• If violationCount === 0 and unclearCount === 0
+• You MAY skip AI and show a static sentence:
+“This contract does not present material risks under the selected policy.”
+• If AI fails:
+• fallback to deterministic executive sentence from STEP 9A
+
+AI output is never persisted as source of truth.
+
+⸻
+
+5️⃣ API
+
+Add endpoint:
+
+POST /api/contracts/:id/executive-narrative
+
+Body:
+
+{ "policyId": "..." }
+
+Behavior:
+• computes ExecutiveNarrativeInput deterministically
+• calls AI
+• returns { narrative: string }
+
+RBAC:
+• VIEWER: read-only allowed
+• LEGAL / RISK / ADMIN: allowed
+
+⸻
+
+6️⃣ UI
+
+In Executive Risk Summary panel:
+• Add section:
+“Executive Narrative (AI-generated)”
+• Show paragraph text
+• Add small label:
+“Generated from structured risk data”
+• Optional button:
+“Regenerate narrative” (same input, no side effects)
+
+⸻
+
+7️⃣ Ledger (optional, lightweight)
+
+Do NOT add new enum.
+
+Optionally attach to existing event:
+• type: ANALYSIS_RUN
+• metadata:
+
+{
+"executiveNarrativeGenerated": true
+}
+
+⸻
+
+8️⃣ Tests
+• AI is never called with raw text
+• Same input → deterministic structure (content may vary linguistically)
+• Narrative exists even if AI fails (fallback works)
+• No score/compliance changes after generation
+
+⸻
+
+9️⃣ Manual Verification Checklist 1. Analyze a contract with violations. 2. Open Executive Risk Summary. 3. See:
+• deterministic summary (STEP 9A)
+• AI narrative below it 4. Narrative:
+• matches score and risks
+• mentions key areas (LEGAL / FINANCIAL / DATA)
+• does NOT mention clauses, pages, or contract text 5. Regenerate narrative → no data changes.
+
+⸻
+
+Deliverables
+• executiveNarrativeAI.ts
+• API endpoint
+• UI integration
+• guardrails + fallback
+• tests
+
+⸻
+
+Important reminder
+
+This step adds zero risk to the system.
+It improves:
+• readability
+• sales
+• executive adoption
+
+without touching:
+• policy logic
+• scoring
+• compliance
+• auditability
+
+⸻
+
+Implement STEP 9C: Executive Export Pack (PDF + HTML/MD) for the Executive Risk Summary.
+
+Context
+• STEP 9A exists: deterministic risk aggregation + executive summary data (per policy, per contract/version).
+• STEP 9B exists: AI narrative generated from structured risk data (regeneratable).
+• We already have exports in STEP7 (compare report) with HTML and PDF support (likely using @react-pdf/renderer or equivalent).
+• Must remain audit-safe:
+• scoring and compliance are deterministic
+• AI is ONLY used for narrative text (optional)
+
+Goal
+
+Add a single, management-ready export for the Executive Risk Summary page:
+• PDF (primary)
+• HTML and Markdown (secondary, downloadable)
+Export must include:
+
+    1.	Contract metadata (title, counterparty, contractType, version, dates)
+    2.	Contract decision headline (COMPLIANT / NEEDS_REVIEW / NON_COMPLIANT)
+    3.	Score (raw + effective)
+    4.	Risk clusters table (riskType -> level, violations, unclear)
+    5.	Key risks list (top 5 drivers, deterministic)
+    6.	Approved exceptions snapshot (if any) — counts + list (optional but nice)
+    7.	AI narrative (if present) with label “AI-generated narrative (from structured risk data)”
+    8.	Footer: generatedAt, workspace, policy name
+
+Constraints
+• Workspace scoped + RBAC enforced
+• VIEWER can download HTML/MD, but PDF export only for LEGAL/RISK/ADMIN (or same rule you used in STEP7).
+• Do NOT change scoring logic.
+• Do NOT introduce new migrations unless strictly needed.
+• Avoid N+1 queries (use one server query that returns everything required).
+
+⸻
+
+1. API
+
+Add endpoints
+
+GET /api/contracts/:id/executive-summary?policyId=...&versionId=...
+• returns a normalized “export-ready” object:
+• contract info
+• selected version info
+• summary (score, decision, clusters, keyRisks)
+• narrative (string | null)
+• exceptions summary (optional)
+• RBAC: VIEWER can read
+
+POST /api/contracts/:id/executive-summary/export
+Body:
+
+{
+"policyId": "…",
+"versionId": "…",
+"format": "pdf" | "html" | "md",
+"includeNarrative": true | false
+}
+
+    •	For pdf: return application/pdf streamed download
+    •	For html: return text/html
+    •	For md: return text/markdown
+    •	RBAC:
+    •	html/md: any authenticated workspace member (VIEWER allowed)
+    •	pdf: LEGAL/RISK/ADMIN only (or consistent with STEP7)
+
+Ledger
+
+Record LedgerEventType (if already added in enum) OR reuse existing:
+• If you already have a generic export event type: use it.
+• Otherwise do NOT add new enum values now (avoid migration pain).
+• Instead: record POLICY_RULE_UPDATED etc is irrelevant — add a LedgerEvent with:
+• type: ANALYSIS_RUN (or another existing safe type) is wrong.
+• Prefer: add metadata.action = "EXECUTIVE_EXPORT" and keep type = "REPORT_EXPORTED" only if enum exists.
+If no suitable type exists, log with the closest existing OR skip ledger for MVP.
+(Prefer logging if you already have something like REPORT_EXPORTED.)
+
+⸻
+
+2. Report builder service
+
+Create:
+src/core/services/reports/executiveSummaryReport.ts
+
+Exports:
+
+export type ExecutiveExportModel = { ... };
+
+export function buildExecutiveMarkdown(model: ExecutiveExportModel): string;
+export function buildExecutiveHtml(model: ExecutiveExportModel): string;
+export async function buildExecutivePdf(model: ExecutiveExportModel): Promise<Uint8Array | Buffer>;
+
+PDF implementation
+• Reuse the same PDF stack used in STEP7 (DO NOT introduce a second library).
+• If STEP7 uses @react-pdf/renderer, implement a new PDF component:
+• ExecutiveSummaryPdf.tsx
+• Layout: 1–2 pages max, clean, “board-ready”.
+
+PDF sections order:
+• Title + subtitle (contract, policy)
+• Decision headline + effective score
+• Risk clusters table
+• Key risks bullets
+• Exceptions snapshot (optional)
+• AI narrative block (optional)
+• Footer
+
+⸻
+
+3. UI changes
+
+On the Executive Risk Summary UI (where you have dropdown policy + export button already):
+• Replace/extend current export:
+• Dropdown “Export format”: PDF / HTML / Markdown
+• Checkbox: “Include AI narrative”
+• Button “Export Executive Summary”
+• On click:
+• call POST export endpoint
+• trigger browser download with correct filename:
+• ExecutiveSummary*<contractTitle>\_v<version>*<policy>.pdf
+• Show visible success/error states.
+
+⸻
+
+4. Contract detail integration (optional but recommended)
+
+In /contracts/[id] compliance section:
+• add small link:
+• “Open Executive Summary”
+• goes to /contracts/[id]/executive?versionId=…&policyId=…
+(if page exists already, just add link; otherwise skip)
+
+⸻
+
+5. Tests (Vitest)
+
+Add tests: 1. executiveSummaryReport.test.ts
+
+    •	markdown contains: contract title, score, decision
+    •	html contains: key risks items
+
+    2.	export/route.test.ts
+
+    •	VIEWER can export html/md (200)
+    •	VIEWER cannot export pdf (403)
+    •	LEGAL/RISK/ADMIN can export pdf (200, content-type pdf)
+
+    3.	Ensure export does not change DB state except optional ledger event.
+
+⸻
+
+6. Manual verification checklist
+   1. Open contract → Executive Risk Summary
+   2. Select policy and version (if selectable)
+   3. Export:
+      • HTML downloads and opens in browser
+      • MD downloads
+      • PDF downloads and is readable (1–2 pages)
+   4. Toggle “Include AI narrative”:
+      • ON: narrative appears with label “AI-generated”
+      • OFF: narrative section hidden
+   5. Login as VIEWER:
+      • export html/md works
+      • export pdf forbidden
+   6. Verify no scoring changes after export.
+
+⸻
+
+Deliverables
+• API endpoints (GET model + POST export)
+• executiveSummaryReport builder (md/html/pdf)
+• UI export controls + download behavior
+• tests + manual checklist
+• (optional) ledger export event metadata
+
+Important: Do not refactor existing scoring/compliance. Only read existing computed structures and generate exports.
+
+⸻
+
+Implement STEP 10: Portfolio Risk Dashboard (C-level overview).
+
+Context:
+• We have Contracts, Versions, Policies, ClauseFindings, ContractCompliance (raw/effective), Exceptions, Ledger.
+• EffectiveScore must consider approved exceptions.
+• UI already exists for contract detail, compare, executive summary export.
+
+Goal:
+Create a workspace-level dashboard that lists all contracts with their latest risk posture and allows filtering by riskType/status for executive overview.
+
+Requirements: 1. Data aggregation (server-side):
+
+    •	For each contract, pick the latest version (max versionNumber or latest createdAt).
+    •	For that version, pick compliance for a selected policy (default: first active policy).
+    •	Compute:
+    •	effectiveScore, status
+    •	counts: violations, unclear, overridden (approved exceptions)
+    •	riskType breakdown (LEGAL/FINANCIAL/OPERATIONAL/DATA/SECURITY): counts of violations + unclear
+    •	exceptions: requested/open, approved
+    •	lastAnalyzedAt (from compliance createdAt or ledger ANALYSIS_RUN)
+
+    2.	API:
+
+    •	GET /api/dashboard/contracts
+
+Query:
+• policyId? (optional, default active)
+• status? (COMPLIANT|NEEDS_REVIEW|NON_COMPLIANT)
+• riskType? (LEGAL|FINANCIAL|OPERATIONAL|DATA|SECURITY)
+• counterpartyId?
+• hasOpenExceptions? boolean
+• hasUnclear? boolean
+• q? (search by title/counterparty)
+• page, pageSize, sort
+RBAC: VIEWER can read.
+Workspace-scoped, no N+1 (use Prisma includes/aggregations).
+
+    3.	UI page:
+
+    •	Create /dashboard (or /portfolio) page.
+    •	Top controls:
+    •	policy dropdown
+    •	filters (status, riskType, hasOpenExceptions, hasUnclear)
+    •	search input
+    •	Table:
+    •	Contract title + counterparty
+    •	Status badge
+    •	EffectiveScore
+    •	Violations / Unclear / Overridden counts
+    •	Top risk types (chips)
+    •	Last analyzed
+    •	Link “Open” → /contracts/[id]
+    •	Add nav link “Dashboard” in AppLayout.
+
+    4.	Tests:
+
+    •	API returns only workspace contracts.
+    •	Filtering by riskType works.
+    •	Contract with approved exception shows higher effectiveScore and overridden count.
+    •	VIEWER has access.
+
+    5.	Manual verification checklist:
+
+    •	Analyze at least 2 contracts with different outcomes.
+    •	Go to /dashboard:
+    •	Verify rows match contract detail compliance.
+    •	Filters change results.
+    •	Clicking opens contract detail.
+
+Deliverables:
+• dashboard repo/service (aggregation)
+• api route + zod
+• ui page
+• tests
+
+Implement STEP 11: Deal Desk Mode (premium) end-to-end.
+
+Context
+• We already have: Contracts, Versions, Documents upload + text extraction, ClauseExtraction (AI), ClauseFindings, ContractCompliance (raw/effective), Exceptions workflow, Ledger events.
+• STEP 7 compare exists (vA vs vB risk delta + export).
+• STEP 9 provides executive risk summary + AI narrative generation from structured risk data.
+• STEP 10 provides Portfolio Risk Dashboard.
+
+Goal
+Create a “Deal Desk” workflow for a single contract version under a selected policy: 1. Combine analysis + exceptions + compare + executive narrative into a single decision view. 2. Produce a deterministic decision recommendation: GO / NO-GO / NEEDS_REVIEW (no AI for the decision). 3. Allow legal/risk/admin to “approve” a final decision record with audit trail. 4. Export a management-ready Deal Desk report (PDF + HTML).
+
+Non-goals
+• Do NOT change core scoring rules.
+• AI can generate narrative text, but decision logic must be deterministic.
+
+──────────────────────────────── 1. Prisma models
+────────────────────────────────
+
+Add enums:
+DealDecisionStatus: DRAFT | FINAL
+DealDecisionOutcome: GO | NO_GO | NEEDS_REVIEW
+
+Add model DealDecision:
+• id
+• workspaceId
+• contractId
+• contractVersionId
+• policyId
+• status DealDecisionStatus (default DRAFT)
+• outcome DealDecisionOutcome
+• rationale Text (deterministic explanation + key drivers)
+• executiveSummary Text (can be AI-generated from structured data; optional)
+• createdByUserId
+• finalizedByUserId (nullable)
+• finalizedAt (nullable)
+• createdAt
+• updatedAt
+
+Constraints:
+• @@unique([contractVersionId, policyId]) // one decision per version+policy
+
+Migrations allowed.
+
+──────────────────────────────── 2) Deterministic decision engine
+────────────────────────────────
+
+Create:
+src/core/services/dealDesk/dealDecisionEngine.ts
+
+Input:
+• contractVersionId
+• policyId
+
+Load:
+• compliance (raw/effective score, status)
+• findings (policy rules) including:
+• complianceStatus (VIOLATION/UNCLEAR/COMPLIANT/NOT_APPLICABLE)
+• severity, riskType, weight, recommendation
+• overridden flag (approved exception linked)
+• exceptions:
+• open exceptions count (REQUESTED)
+• approved exceptions count
+• optional: latest comparison vs previous version (if exists) to show trend (but decision must not require compare)
+
+Decision logic (deterministic, must be reproducible):
+• Let effectiveScore = compliance.effectiveScore
+• Let violations = count findings where status==VIOLATION and not overridden
+• Let criticalViolations = count findings where severity==CRITICAL and status==VIOLATION and not overridden
+• Let unclear = count findings where status==UNCLEAR
+• Let openExceptions = count exceptions with status==REQUESTED
+Rules:
+
+    1.	If criticalViolations > 0 → outcome = NO_GO
+    2.	Else if effectiveScore < 60 → outcome = NO_GO
+    3.	Else if violations > 0 → outcome = NEEDS_REVIEW
+    4.	Else if unclear > 0 → outcome = NEEDS_REVIEW
+    5.	Else if openExceptions > 0 → outcome = NEEDS_REVIEW
+    6.	Else → outcome = GO
+
+Rationale builder (deterministic):
+• Provide bullet reasons:
+• “Effective score: 72/100”
+• “Violations: 1 (FINANCIAL: LIABILITY)”
+• “Unclear: 2 (LEGAL: CONFIDENTIALITY, DATA: DATA_PRIVACY)”
+• “Approved exceptions: 1”
+• “Open exception requests: 1”
+• Include top 5 drivers:
+• highest weights among violations/unclear
+• Include riskType clustering summary (reuse STEP 9 aggregation)
+
+Output:
+type DealDecisionPreview = {
+contractId
+contractVersionId
+policyId
+effectiveScore
+rawScore
+outcome
+statusSuggestion: “DRAFT”
+counts: { violations, criticalViolations, unclear, overridden, openExceptions, approvedExceptions }
+topDrivers: Array<{ clauseType, riskType, severity, weight, status, recommendation }>
+rationaleMarkdown: string
+}
+
+No AI calls here.
+
+──────────────────────────────── 3) Ledger integration
+────────────────────────────────
+
+Add LedgerEventType values (if you prefer avoiding enum migration pain, store metadata with existing types; but best is new enum values now):
+• DEAL_DECISION_DRAFTED
+• DEAL_DECISION_FINALIZED
+• DEAL_DESK_REPORT_EXPORTED
+
+Record events:
+• when decision saved (draft) → DEAL_DECISION_DRAFTED
+• when finalized → DEAL_DECISION_FINALIZED
+• when exporting report → DEAL_DESK_REPORT_EXPORTED
+
+Include metadata:
+• outcome, effectiveScore, violations/unclear counts, policyId
+
+──────────────────────────────── 4) API routes
+────────────────────────────────
+
+All workspace-scoped, RBAC enforced.
+
+A) GET /api/contracts/:id/versions/:versionId/deal-desk?policyId=…
+RBAC: VIEWER can read
+Returns:
+• deal decision preview (computed)
+• existing DealDecision if exists (draft/final)
+• compliance + findings + exceptions summary (for UI)
+
+If missing analysis for that version/policy → 409 MISSING_ANALYSIS with details.
+
+B) POST /api/contracts/:id/versions/:versionId/deal-desk/draft
+Body: { policyId, executiveSummary? } // executiveSummary optional (AI-generated separately)
+RBAC: LEGAL/RISK/ADMIN
+Creates or updates DealDecision as DRAFT using engine output for outcome + rationale.
+If user supplies executiveSummary store it.
+
+C) POST /api/contracts/:id/versions/:versionId/deal-desk/finalize
+Body: { policyId }
+RBAC: LEGAL/RISK/ADMIN only
+Sets status=FINAL, finalizedByUserId, finalizedAt.
+Must be idempotent (finalizing twice returns existing).
+If decision doesn’t exist yet, create from engine output then finalize.
+
+D) POST /api/contracts/:id/versions/:versionId/deal-desk/narrative
+Body: { policyId }
+RBAC: LEGAL/RISK/ADMIN
+Uses AI to generate executiveSummary text ONLY from structured data:
+• compliance scores/status
+• risk type aggregation
+• key risks list (top drivers)
+• exceptions summary
+DO NOT pass raw contract text.
+Returns generated narrative string; store on DealDecision (draft) optionally.
+
+E) POST /api/contracts/:id/versions/:versionId/deal-desk/report
+Body: { policyId, format: “pdf”|“html” }
+RBAC: LEGAL/RISK/ADMIN
+Generates management-ready report from structured data + decision record:
+• if DealDecision exists use it; else compute preview
+Return downloadable file:
+• pdf: application/pdf
+• html: text/html
+
+Zod validate all payloads.
+
+──────────────────────────────── 5) UI: Deal Desk page
+────────────────────────────────
+
+Add route:
+A) /contracts/[id]/deal-desk?versionId=…&policyId=…
+
+Entry points:
+• On contract detail page, per version add button “Deal Desk”.
+• On compare page, add shortcut “Open Deal Desk for v2”.
+
+UI layout (single page, exec-friendly): 1. Header: Contract title + counterparty + version number + policy selector 2. “Decision” card:
+• Outcome badge: GO / NO-GO / NEEDS_REVIEW
+• Effective score + status
+• Counts (Violations, Unclear, Overridden, Open exceptions) 3. “Key risks” (top drivers list) 4. “Exceptions” panel:
+• open requests + approved list with links 5. “Comparison” panel (if previous version exists):
+• link to compare page, show delta improved/worsened (optional) 6. “Executive Narrative (AI-generated)” box:
+• Button “Generate narrative”
+• Shows narrative text
+• Disclaimer: “Generated from structured risk data” 7. Actions:
+• “Save Draft”
+• “Finalize decision”
+• “Export report (PDF)”
+• “Export report (HTML)”
+
+RBAC:
+• VIEWER can view but buttons disabled (draft/finalize/generate/export)
+• LEGAL/RISK/ADMIN can do actions
+
+Show clear empty states:
+• Missing analysis → show “Analyze contract first” link to contract detail
+• Missing extractions (optional) → still ok if findings exist
+
+──────────────────────────────── 6) Report generator
+────────────────────────────────
+
+Create:
+src/core/services/reports/dealDeskReport.ts
+
+Functions:
+• buildDealDeskHtml(payload): string
+• buildDealDeskPdf(payload): Buffer (use same PDF approach as STEP 7)
+
+Report sections:
+• Contract + policy + version
+• Decision outcome + effective score
+• Risk table by riskType (violations/unclear/overridden)
+• Key risks list with recommendations
+• Exceptions summary (approved + open)
+• Optional narrative section (if present)
+• Footer: workspace + generated at
+
+Ensure “management-ready” formatting.
+
+──────────────────────────────── 7) Tests
+────────────────────────────────
+
+Unit tests:
+• dealDecisionEngine:
+• critical violation => NO_GO
+• effectiveScore < 60 => NO_GO
+• violations >0 => NEEDS_REVIEW
+• unclear >0 => NEEDS_REVIEW
+• openExceptions >0 => NEEDS_REVIEW
+• else GO
+• overridden violations don’t count
+API tests:
+• VIEWER cannot draft/finalize/export (403)
+• workspace scoping enforced
+• finalize is idempotent
+• narrative endpoint does not include contract raw text (validate prompt input source is structured-only)
+Report tests:
+• html/pdf generation returns non-empty output and includes outcome/score
+
+──────────────────────────────── 8) Manual verification checklist
+──────────────────────────────── 1. Analyze a contract version with at least 1 violation and 1 unclear. 2. Open Deal Desk:
+• Outcome should be NEEDS_REVIEW or NO_GO based on rules 3. Create an exception and approve it:
+• overridden count increases, effective score may increase
+• outcome may change deterministically 4. Generate narrative:
+• should mention score, categories, key risks 5. Save draft then finalize:
+• status becomes FINAL, ledger shows events 6. Export PDF/HTML and verify content. 7. VIEWER: can view page but cannot click actions.
+
+Deliverables
+• Prisma migration (DealDecision + enums)
+• dealDecisionEngine service
+• Deal Desk API routes + zod
+• UI page + entry points
+• Report generator (PDF + HTML)
+• Ledger events for actions
+• Tests + manual checklist

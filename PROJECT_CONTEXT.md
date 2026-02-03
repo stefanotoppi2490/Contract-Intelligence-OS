@@ -1,183 +1,220 @@
-Contract Intelligence OS — PROJECT_CONTEXT
+PROJECT_CONTEXT.md
 
-Questo documento è la fonte di verità del progetto Contract Intelligence OS.
-Serve a fornire a strumenti agentic (Cursor, ChatGPT, ecc.) contesto completo, coerente e non ambiguo su architettura, principi, step già completati e direzione futura.
+Contract Intelligence OS — Project Context (Updated to STEP 11)
 
-⸻
+Vision
 
-1. Visione del prodotto
+Contract Intelligence OS is a policy-driven, audit-ready contract risk decision platform.
 
-Contract Intelligence OS è una piattaforma deterministica, auditabile e enterprise-grade per:
-• analisi contrattuale
-• valutazione di compliance e rischio
-• gestione eccezioni
-• confronto versioni (redline + risk delta)
+The system does not rely on AI for decision-making. Instead, it combines:
+• deterministic policy evaluation
+• structured risk aggregation
+• human-readable AI-generated explanations (optional, controlled)
 
-Principio cardine:
-
-L’AI fornisce solo evidenza (estrazione). Le decisioni sono sempre deterministiche.
-
-⸻
-
-2. Principi non negoziabili
-   • ❌ Nessuna decisione demandata all’AI
-   • ✅ Policy Engine sempre deterministico
-   • ✅ Output riproducibili a parità di input
-   • ✅ Audit trail completo (Ledger append-only)
-   • ✅ Workspace-scoped + RBAC ovunque
-   • ✅ Nessuna logica “magica” o nascosta
+The goal is to enable Legal, Risk, Procurement and Executive teams to:
+• understand contract risk instantly
+• compare versions objectively
+• approve or reject deals with a clear audit trail
 
 ⸻
 
-3. Stack tecnico
-   • Frontend / Backend: Next.js App Router (TypeScript strict)
-   • ORM: Prisma
-   • DB: PostgreSQL
-   • Auth: NextAuth / Auth.js
-   • AI: Gemini 3.5 (solo per estrazione, mai per scoring)
-   • PDF: @react-pdf/renderer
-   • UI: shadcn/ui
-   • Deploy: Vercel
+Core Design Principles 1. Determinism first
+• Scores, compliance, decisions are always reproducible
+• Same inputs → same outputs 2. AI is assistive, never authoritative
+• AI extracts data and generates narratives
+• AI never decides compliance, score, or approval 3. Policy-defined truth
+• Risk is evaluated only against explicit company policies
+• Policies are editable, versionable, and auditable 4. Enterprise auditability
+• Every action is logged (Ledger)
+• Decisions are traceable to rules, findings, and users
 
 ⸻
 
-4. Modelli concettuali chiave
+High-Level Architecture
 
-4.1 ClauseExtraction (STEP 8A)
+Document Upload
+→ Text Extraction (PDF/DOCX/TXT)
+→ ClauseExtraction (AI, neutral, evidence-based)
+→ Policy Engine (deterministic)
+→ ClauseFindings
+→ ContractCompliance (rawScore / effectiveScore)
+→ Exceptions (override logic)
+→ Risk Aggregation
+→ Decision & Reporting
 
-Rappresenta ciò che il contratto dice, non un giudizio.
+⸻
+
+Data Model (Key Concepts)
+
+Contract
+
+Represents a legal agreement with a counterparty.
+• Has multiple versions
+
+ContractVersion
+
+Immutable snapshot of a contract at a given time.
+• One main document
+• Extracted text
+• ClauseExtractions (AI)
+• ClauseFindings (policy evaluation)
+• Compliance results
+
+ClauseExtraction (AI layer)
+
+Neutral AI output:
 • clauseType
 • extractedValue (JSON)
-• extractedText (citazione letterale)
-• confidence (0..1)
-• sourceLocation (opzionale)
+• extractedText (quote)
+• confidence (0–1)
 
-È neutrale, evidence-based, AI-generated.
+No compliance logic here.
 
-⸻
+Policy & PolicyRule
 
-4.2 ClauseFinding (STEP 5B → 8B → 8C)
-
-Rappresenta la valutazione deterministica di una policy rule.
-• complianceStatus: COMPLIANT | VIOLATION | UNCLEAR | NOT_APPLICABLE
-• foundValue / foundText / confidence (copiati dall’extraction)
+Defines the company standard.
+Rules include:
+• clauseType
+• ruleType (REQUIRED, FORBIDDEN, MIN_VALUE, etc.)
+• expectedValue
 • severity, riskType, weight
-• unclearReason (LOW_CONFIDENCE, …)
 
-ClauseFinding non è output AI.
+ClauseFinding
 
-⸻
+Result of evaluating a PolicyRule against ClauseExtraction.
+• complianceStatus: COMPLIANT | VIOLATION | UNCLEAR | NOT_APPLICABLE
+• foundValue / foundText / confidence
+• unclearReason (e.g. LOW_CONFIDENCE)
 
-4.3 Policy Engine
-• Input: ClauseExtraction + PolicyRules
-• Output: ClauseFindings + ContractCompliance
-• Nessuna chiamata AI
-• Deterministico al 100%
+ContractCompliance
 
-⸻
+Aggregated result per (version, policy):
+• rawScore
+• effectiveScore (exceptions applied)
+• counts: violations, unclear, overridden
 
-5. Pipeline di analisi (stato attuale)
+Exceptions
 
-Upload documento
-↓
-Text extraction (PDF/DOCX/TXT)
-↓
-AI Clause Extraction (STEP 8A)
-↓
-Policy Engine (STEP 8B)
-↓
-Confidence gate → UNCLEAR (STEP 8C)
-↓
-ClauseFindings + Compliance
+Formal override workflow:
+• requested → approved / rejected / withdrawn
+• linked to findings
+• affects effectiveScore
 
-⸻
+Ledger
 
-6. STEP completati
-
-STEP 1–4
-• Core DB + Auth + RBAC
-• Contratti, versioni, upload reali
-• Text extraction pipeline
-
-STEP 5A / 5B
-• Policy Engine deterministico
-• PolicyRules configurabili
-
-STEP 6
-• Exceptions + Ledger (audit completo)
-
-STEP 7
-• Compare versions (redline + risk delta)
-• Top drivers
-• Export HTML + PDF
-
-STEP 8A
-• AI-assisted ClauseExtraction (neutrale)
-
-STEP 8B
-• Policy Engine consuma ClauseExtraction
-• Fallback controllato se extraction mancante
-
-STEP 8C
-• Uso confidence per:
-• marcare UNCLEAR
-• NON penalizzare score
-• forzare NEEDS_REVIEW
+Immutable audit log for:
+• uploads
+• analysis
+• exceptions
+• decisions
+• reports
 
 ⸻
 
-7. Regole chiave di STEP 8C
-   • confidence < 0.75 → complianceStatus = UNCLEAR
-   • UNCLEAR:
-   • ❌ non sottrae peso
-   • ✅ visibile in UI
-   • ✅ influenza stato complessivo (NEEDS_REVIEW)
-   • confidence null/undefined → 0.0
+Implemented Feature Steps
+
+STEP 1–4: Foundations
+• Auth, workspace scoping, RBAC
+• Contract + version management
+• Real file upload (Vercel Blob)
+• Text extraction (PDF/DOCX/TXT)
+
+STEP 5: Deterministic Policy Engine
+• Clause taxonomy
+• Rule evaluation
+• Scoring logic
+
+STEP 6: Exceptions & Ledger
+• Request / approve / reject exceptions
+• Full audit trail
+
+STEP 7: Version Compare (Redline + Risk Delta)
+• Version A vs B comparison
+• Risk improved / worsened
+• Exportable report
+
+STEP 8A–8C: AI-Assisted Extraction + Confidence Handling
+• AI extracts structured clause data
+• Confidence stored and surfaced
+• Low confidence → UNCLEAR (deterministic)
+
+STEP 9A–9C: Risk Aggregation & Executive Summary
+• Cluster risks by category
+• Deterministic compliance summary
+• AI-generated narrative (verbalization only)
+• Management-ready export
+
+STEP 10: Portfolio Risk Dashboard
+• Workspace-level overview
+• Latest version per contract
+• Filters by riskType, status, exceptions
+• C-level visibility
+
+STEP 11: Deal Desk Mode (Premium)
+• Single-contract decision view
+• Compliance + findings + exceptions + narrative
+• Deterministic recommendation: GO / NO_GO / NEEDS_REVIEW
+• Draft / Final decision
+• Export decision report
 
 ⸻
 
-8. UX expected (STEP 8C)
+Scoring & Decision Logic (Invariant)
+• VIOLATION deducts weight
+• UNCLEAR does not deduct (but triggers NEEDS_REVIEW)
+• APPROVED exceptions remove deduction
 
-Contract detail
-• Badge UNCLEAR (giallo)
-• Testo: “Low extraction confidence (62%), needs review”
-• Pulsante “Request exception” disponibile
-
-Compliance header
-• Score raw / effective
-• “⚠ X clauses need review” se unclearCount > 0
-
-Compare (STEP 7)
-• UNCLEAR ↔ COMPLIANT = MODIFIED
-• Why deterministico basato su confidence threshold
+Decision:
+• effectiveScore < 60 → NO_GO
+• violations > 0 or unclear > 0 → NEEDS_REVIEW
+• else → GO
 
 ⸻
 
-9. Ledger
-   • Tutto append-only
-   • Eventi umanizzati via formatter deterministico
-   • Nessuna AI nel ledger
+Role of AI in the System
+
+AI is used only for:
+• ClauseExtraction (structured, quoted, confidence-based)
+• Narrative generation (executive summaries, reports)
+
+AI is never used for:
+• compliance
+• scoring
+• approval decisions
 
 ⸻
 
-10. Direzione futura
+Product Positioning
 
-STEP 9 (prossimo)
+Contract Intelligence OS is not a contract reader.
 
-Risk aggregation & reporting:
-• cluster di rischio per categoria
-• executive summary deterministica
-• export management-ready
+It is a:
+• Risk Decision Engine
+• Policy Enforcement Layer
+• Deal Desk Infrastructure
 
-STEP 10+
-• Workspace-level policy profiles
-• Benchmarking
-• Risk trends nel tempo
+Designed for:
+• Legal & Risk teams
+• Procurement
+• Executives
+• Auditors
 
 ⸻
 
-11. Regola d’oro per Cursor / AI
+Future Extensions (Optional)
+• Policy packs (industry-specific)
+• Negotiation clause suggestions (assistive)
+• SSO / SCIM
+• External API / Webhooks
+• Multi-policy portfolio analysis
 
-Se una modifica introduce non-determinismo, AI decisionale o rompe l’audit → È SBAGLIATA.
+⸻
 
-Questo file va letto prima di generare codice o suggerire refactor.
+Non-Goals
+• No black-box AI decisions
+• No heuristic scoring
+• No untraceable outputs
+
+⸻
+
+This document is the source of truth for architecture, behavior, and product philosophy.
