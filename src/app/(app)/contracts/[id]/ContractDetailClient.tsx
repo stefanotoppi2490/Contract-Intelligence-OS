@@ -839,6 +839,19 @@ export function ContractDetailClient({
                   </div>
                 )}
 
+                {/* Deal Desk — STEP 11 */}
+                {v.compliances.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link
+                      href={`/contracts/${contractId}/deal-desk?versionId=${encodeURIComponent(v.id)}&policyId=${encodeURIComponent(v.compliances[0].policyId)}`}
+                    >
+                      <Button size="sm" variant="outline">
+                        Deal Desk
+                      </Button>
+                    </Link>
+                  </div>
+                )}
+
                 {/* Compliance score + findings */}
                 {(v.compliances.length > 0 || v.findings.length > 0) && (
                   <div className="rounded border bg-muted/20 p-3 space-y-2">

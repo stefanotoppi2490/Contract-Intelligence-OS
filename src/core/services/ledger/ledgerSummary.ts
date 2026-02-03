@@ -92,6 +92,21 @@ export function formatLedgerSummary(
       }
       return `Report exported: ${policyName ?? event.policyId ?? "?"} (v${m.fromVersionNumber ?? "?"} → v${m.toVersionNumber ?? "?"})`;
     }
+    case "DEAL_DECISION_DRAFTED" as LedgerEventType: {
+      const outcome = (m.outcome as string) ?? "?";
+      const score = (m.effectiveScore as number) ?? "?";
+      return `Deal decision drafted: ${policyName ?? event.policyId ?? "?"} — ${outcome} (score ${score})`;
+    }
+    case "DEAL_DECISION_FINALIZED" as LedgerEventType: {
+      const outcome = (m.outcome as string) ?? "?";
+      const score = (m.effectiveScore as number) ?? "?";
+      return `Deal decision finalized: ${policyName ?? event.policyId ?? "?"} — ${outcome} (score ${score})`;
+    }
+    case "DEAL_DESK_REPORT_EXPORTED" as LedgerEventType: {
+      const outcome = (m.outcome as string) ?? "?";
+      const format = (m.format as string) ?? "?";
+      return `Deal desk report exported: ${policyName ?? event.policyId ?? "?"} — ${outcome} (${format})`;
+    }
     default:
       return `${event.type} — ${event.entityType} ${event.entityId}`;
   }

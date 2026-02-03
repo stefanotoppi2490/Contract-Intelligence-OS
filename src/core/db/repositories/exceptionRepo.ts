@@ -95,13 +95,17 @@ export function findManyExceptionRequestsByWorkspace(
 
 export function findManyExceptionRequestsByContractVersion(
   contractVersionId: string,
-  args?: Omit<Prisma.ExceptionRequestFindManyArgs, "where">
+  args?: Prisma.ExceptionRequestFindManyArgs
 ) {
+  const baseWhere: Prisma.ExceptionRequestWhereInput = { contractVersionId };
+  const where = args?.where
+    ? { ...baseWhere, ...(typeof args.where === "object" && !Array.isArray(args.where) ? args.where : {}) }
+    : baseWhere;
   return prisma.exceptionRequest.findMany({
     ...args,
-    where: { contractVersionId },
+    where,
     orderBy: args?.orderBy ?? { createdAt: "desc" },
-    include: args?.include ?? { policy: true, clauseFinding: true },
+    ...(args?.select != null ? {} : { include: args?.include ?? { policy: true, clauseFinding: true } }),
   });
 }
 

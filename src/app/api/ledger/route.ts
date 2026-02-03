@@ -21,6 +21,11 @@ const LEDGER_EVENT_TYPES: LedgerEventType[] = [
   "POLICY_RULE_CREATED",
   "POLICY_RULE_UPDATED",
   "POLICY_RULE_DELETED",
+  "VERSION_COMPARED",
+  "REPORT_EXPORTED",
+  "DEAL_DECISION_DRAFTED",
+  "DEAL_DECISION_FINALIZED",
+  "DEAL_DESK_REPORT_EXPORTED",
 ];
 
 /** GET: list ledger events for workspace. Filters: type, contractId. Pagination: limit (default 50). RBAC: any role. Includes summary. */

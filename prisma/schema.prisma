@@ -179,6 +179,21 @@ enum LedgerEventType {
   POLICY_RULE_DELETED
   VERSION_COMPARED
   REPORT_EXPORTED
+  DEAL_DECISION_DRAFTED
+  DEAL_DECISION_FINALIZED
+  DEAL_DESK_REPORT_EXPORTED
+}
+
+// STEP 11: Deal Desk
+enum DealDecisionStatus {
+  DRAFT
+  FINAL
+}
+
+enum DealDecisionOutcome {
+  GO
+  NO_GO
+  NEEDS_REVIEW
 }
 
 // ─── Tenant & Auth ─────────────────────────────────────────────────────────
@@ -198,6 +213,7 @@ model Workspace {
   exceptionRequests  ExceptionRequest[]
   auditEvents        AuditEvent[]
   clauseExtractions  ClauseExtraction[]   // STEP 8A
+  dealDecisions      DealDecision[]      // STEP 11
 
   @@index([createdAt])
 }
@@ -301,6 +317,7 @@ model Contract {
   workspace   Workspace        @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
   counterparty Counterparty   @relation(fields: [counterpartyId], references: [id], onDelete: Restrict)
   versions    ContractVersion[]
+  dealDecisions DealDecision[]
 
   @@index([workspaceId, createdAt])
 }
@@ -320,6 +337,7 @@ model ContractVersion {
   policyViolations   PolicyViolation[]
   exceptionRequests  ExceptionRequest[]
   contractCompliance ContractCompliance[]
+  dealDecisions      DealDecision[]        // STEP 11
 
   @@unique([contractId, versionNumber])
   @@index([contractId, createdAt])
@@ -427,6 +445,7 @@ model Policy {
   policyViolations   PolicyViolation[]
   exceptionRequests  ExceptionRequest[]
   contractCompliance ContractCompliance[]
+  dealDecisions      DealDecision[]       // STEP 11
 
   @@index([workspaceId, createdAt])
 }
@@ -528,6 +547,31 @@ model ExceptionComment {
   exceptionRequest ExceptionRequest @relation(fields: [exceptionId], references: [id], onDelete: Cascade)
 
   @@index([exceptionId])
+}
+
+model DealDecision {
+  id                 String             @id @default(cuid())
+  workspaceId        String
+  contractId         String
+  contractVersionId  String
+  policyId           String
+  status             DealDecisionStatus @default(DRAFT)
+  outcome            DealDecisionOutcome
+  rationale          String             @db.Text
+  executiveSummary   String?            @db.Text
+  createdByUserId   String
+  finalizedByUserId  String?
+  finalizedAt        DateTime?
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  workspace  Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  contract   Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  contractVersion ContractVersion @relation(fields: [contractVersionId], references: [id], onDelete: Cascade)
+  policy     Policy          @relation(fields: [policyId], references: [id], onDelete: Cascade)
+
+  @@unique([contractVersionId, policyId])
+  @@index([workspaceId, createdAt])
 }
 
 model LedgerEvent {

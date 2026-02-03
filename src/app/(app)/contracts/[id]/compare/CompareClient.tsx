@@ -296,6 +296,13 @@ export function CompareClient({
             <Button onClick={runCompare} disabled={loading}>
               {loading ? "Comparing…" : "Compare"}
             </Button>
+            {result && toVersionId && policyId && (
+              <Link
+                href={`/contracts/${contractId}/deal-desk?versionId=${encodeURIComponent(toVersionId)}&policyId=${encodeURIComponent(policyId)}`}
+              >
+                <Button variant="outline">Open Deal Desk for v{versions.find((v) => v.id === toVersionId)?.versionNumber ?? "2"}</Button>
+              </Link>
+            )}
             {result && canExportReport && (
               <>
                 <Button variant="outline" onClick={exportReport} disabled={exporting}>

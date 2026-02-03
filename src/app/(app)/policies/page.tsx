@@ -7,6 +7,25 @@ import { PoliciesClient } from "./PoliciesClient";
 
 export const dynamic = "force-dynamic";
 
+type PolicyRuleRow = {
+  id: string;
+  clauseType: string;
+  ruleType: string;
+  expectedValue: unknown;
+  severity: string | null;
+  riskType: string | null;
+  weight: number;
+  recommendation: string | null;
+};
+
+type PolicyWithRules = {
+  id: string;
+  name: string;
+  description: string | null;
+  isActive: boolean;
+  rules: PolicyRuleRow[];
+};
+
 export default async function PoliciesPage() {
   const session = await getServerSessionWithWorkspace();
   try {
@@ -15,7 +34,9 @@ export default async function PoliciesPage() {
     redirect("/select-workspace");
   }
   const workspaceId = session.currentWorkspaceId!;
-  const policies = await policyRepo.findManyPoliciesByWorkspace(workspaceId);
+  const policies = (await policyRepo.findManyPoliciesByWorkspace(workspaceId, {
+    include: { rules: true },
+  })) as unknown as PolicyWithRules[];
   const canManage = ["LEGAL", "RISK", "ADMIN"].includes(session.role ?? "");
 
   return (
@@ -35,7 +56,7 @@ export default async function PoliciesPage() {
           name: p.name,
           description: p.description ?? null,
           isActive: p.isActive,
-          rules: (p.rules ?? []).map((r) => ({
+          rules: p.rules.map((r) => ({
             id: r.id,
             clauseType: r.clauseType,
             ruleType: r.ruleType,
@@ -43,7 +64,7 @@ export default async function PoliciesPage() {
             severity: r.severity,
             riskType: r.riskType,
             weight: r.weight,
-            recommendation: r.recommendation,
+            recommendation: r.recommendation ?? "",
           })),
         }))}
         canManage={canManage}
