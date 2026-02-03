@@ -1,8 +1,23 @@
 @import "tailwindcss";
 
+/* Super Admin Dashboard palette (Bootstrap Gallery template) */
 :root {
-  --background: #f8fafc;
-  --foreground: #0f172a;
+  --background: #f8f9fc;
+  --foreground: #131722;
+  --sidebar-bg: #140751;
+  --sidebar-text: #dcd6f6;
+  --sidebar-text-muted: rgba(220, 214, 246, 0.75);
+  --sidebar-hover-bg: rgba(255, 255, 255, 0.15);
+  --sidebar-border: rgba(255, 255, 255, 0.1);
+  --primary: #1d8bf1;
+  --header-bg: #ffffff;
+  --header-border: #f3f5f9;
+  --dropdown-bg: #313c47;
+  --dropdown-text: #e2e5ec;
+  --dropdown-hover-bg: rgba(255, 255, 255, 0.15);
+  --card-border-radius: 0.5rem;
+  --rounded-3: 0.3rem;
+  --rounded-5: 1rem;
 }
 
 @theme inline {
@@ -10,17 +25,17 @@
   --color-foreground: var(--foreground);
   --color-card: #ffffff;
   --color-card-foreground: var(--foreground);
-  --color-primary: #2563eb;
+  --color-primary: var(--primary);
   --color-primary-foreground: #fff;
-  --color-secondary: #f1f5f9;
-  --color-secondary-foreground: #0f172a;
-  --color-muted-foreground: #64748b;
-  --color-accent: #f1f5f9;
-  --color-accent-foreground: #0f172a;
-  --color-destructive: #dc2626;
+  --color-secondary: #f3f5f9;
+  --color-secondary-foreground: #131722;
+  --color-muted-foreground: #6e7985;
+  --color-accent: #f3f5f9;
+  --color-accent-foreground: #131722;
+  --color-destructive: #f9537b;
   --color-destructive-foreground: #fff;
-  --color-input: #e2e8f0;
-  --color-ring: #2563eb;
+  --color-input: #e2e5ec;
+  --color-ring: var(--primary);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -29,4 +44,5 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), system-ui, sans-serif;
+  font-size: 0.925rem;
 }

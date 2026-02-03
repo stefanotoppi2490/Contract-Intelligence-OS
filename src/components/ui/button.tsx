@@ -15,16 +15,16 @@ const variantClasses: Record<NonNullable<ButtonProps["variant"]>, string> = {
 };
 
 const sizeClasses: Record<NonNullable<ButtonProps["size"]>, string> = {
-  default: "h-10 px-4 py-2",
-  sm: "h-9 rounded-md px-3",
-  lg: "h-11 rounded-md px-8",
+  default: "h-10 px-4 py-2 rounded-[0.375rem]",
+  sm: "h-9 rounded-[0.3rem] px-3",
+  lg: "h-11 rounded-[0.375rem] px-8",
 };
 
 export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className = "", variant = "default", size = "default", ...props }, ref) => (
     <button
       ref={ref}
-      className={`inline-flex items-center justify-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={`inline-flex items-center justify-center text-[0.925rem] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     />
   )

@@ -75,14 +75,22 @@ export function AppShellClient({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
   return (
-    <div className="min-h-screen flex bg-slate-100">
-      {/* Sidebar */}
+    <div className="min-h-screen flex bg-[var(--background)]">
+      {/* Sidebar — Super Admin: #140751, text #dcd6f6, active primary + gradient */}
       <aside
-        className={`fixed top-0 left-0 z-40 h-screen flex flex-col overflow-hidden bg-slate-800 text-white transition-[width] duration-200 ease-in-out lg:static lg:z-auto ${sidebarOpen ? "w-64" : "w-0"} lg:w-64`}
+        className={`fixed top-0 left-0 z-40 h-screen flex flex-col overflow-hidden transition-[width] duration-200 ease-in-out lg:static lg:z-auto ${sidebarOpen ? "w-64" : "w-0"} lg:w-64`}
+        style={{ backgroundColor: "var(--sidebar-bg)", color: "var(--sidebar-text)" }}
       >
-        <div className="flex h-14 shrink-0 items-center px-4 border-b border-slate-700/50">
-          <Link href="/contracts" className="flex items-center gap-2 font-semibold text-white">
-            <span className="text-lg">Contract Intelligence</span>
+        <div
+          className="flex h-14 shrink-0 items-center px-4 border-b"
+          style={{ borderColor: "var(--sidebar-border)" }}
+        >
+          <Link
+            href="/contracts"
+            className="flex items-center gap-2 text-[1.15625rem] font-medium"
+            style={{ color: "#fff" }}
+          >
+            Contract Intelligence
           </Link>
         </div>
         <nav className="flex-1 overflow-y-auto py-3">
@@ -93,11 +101,16 @@ export function AppShellClient({
                 <li key={href}>
                   <Link
                     href={href}
-                    className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                      active
-                        ? "bg-primary text-primary-foreground"
-                        : "text-slate-300 hover:bg-slate-700/60 hover:text-white"
+                    className={`flex items-center gap-3 px-3 py-2.5 text-[0.925rem] font-medium transition-colors rounded-[var(--rounded-5)] ${
+                      active ? "text-white" : "hover:bg-white/15 hover:text-white"
                     }`}
+                    style={
+                      active
+                        ? {
+                            background: "linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 100%), #1d8bf1",
+                          }
+                        : undefined
+                    }
                   >
                     <Icon name={icon} />
                     <span className="truncate">{label}</span>
@@ -121,38 +134,46 @@ export function AppShellClient({
 
       {/* Main content area */}
       <div className="flex flex-1 flex-col min-w-0">
-        {/* Header */}
-        <header className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-4 shadow-sm">
+        {/* Header — template: btn-transparent rounded-3, border #f3f5f9 */}
+        <header
+          className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b px-4"
+          style={{ backgroundColor: "var(--header-bg)", borderColor: "var(--header-border)" }}
+        >
           <button
             type="button"
             onClick={() => setSidebarOpen((o) => !o)}
-            className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
+            className="rounded-[var(--rounded-3)] p-2 text-[#6e7985] hover:bg-[#f3f5f9] lg:hidden"
             aria-label="Toggle sidebar"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <nav className="hidden items-center gap-1 text-sm text-slate-600 lg:flex">
-            <Link href="/contracts" className="hover:text-slate-900">
+          <nav className="hidden items-center gap-1.5 text-[0.925rem] text-[#6e7985] lg:flex">
+            <Link href="/contracts" className="hover:text-[#131722]">
               Home
             </Link>
-            <span className="text-slate-400">/</span>
-            <span className="text-slate-900 font-medium">
+            <span className="text-[#9ea7b1]">/</span>
+            <span className="font-medium text-[#131722]">
               {navItems.find((n) => pathname === n.href || pathname.startsWith(n.href + "/"))?.label ?? "Page"}
             </span>
           </nav>
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden text-sm text-slate-500 sm:inline">{session.email}</span>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden text-[0.925rem] text-[#6e7985] sm:inline">{session.email}</span>
             <div className="relative">
               <button
                 type="button"
                 onClick={() => setUserMenuOpen((o) => !o)}
-                className="flex items-center gap-2 rounded-full p-1 ring-1 ring-slate-200 hover:ring-slate-300"
+                className="flex items-center gap-2 rounded-[var(--rounded-5)] p-1 ring-1 ring-[#e2e5ec] hover:ring-[#ccd2da]"
                 aria-expanded={userMenuOpen}
                 aria-haspopup="true"
               >
-                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-sm font-medium text-primary-foreground">
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-[var(--rounded-5)] text-sm font-medium text-white"
+                  style={{
+                    background: "linear-gradient(180deg, rgba(255,255,255,0.15) 0%, rgba(255,255,255,0) 100%), #1d8bf1",
+                  }}
+                >
                   {(session.user?.name ?? session.email ?? "U").slice(0, 1).toUpperCase()}
                 </span>
               </button>
@@ -163,15 +184,18 @@ export function AppShellClient({
                     onClick={() => setUserMenuOpen(false)}
                     aria-hidden
                   />
-                  <div className="absolute right-0 top-full z-20 mt-2 w-56 rounded-lg border border-slate-200 bg-white py-2 shadow-lg">
-                    <div className="border-b border-slate-100 px-3 py-2">
-                      <p className="truncate text-sm font-medium text-slate-900">{session.user?.name ?? "User"}</p>
-                      <p className="truncate text-xs text-slate-500">{session.email}</p>
+                  <div
+                    className="absolute right-0 top-full z-20 mt-2 w-56 rounded-[var(--card-border-radius)] border border-[#f3f5f9] py-2 shadow-[0_0.5rem_1rem_rgba(17,20,24,0.15)]"
+                    style={{ backgroundColor: "var(--dropdown-bg)", color: "var(--dropdown-text)" }}
+                  >
+                    <div className="border-b border-white/10 px-3 py-2.5">
+                      <p className="truncate text-sm font-semibold text-[#e2e5ec]">{session.user?.name ?? "User"}</p>
+                      <p className="truncate text-xs text-[#9ea7b1]">{session.email}</p>
                     </div>
                     <div className="flex flex-col gap-0.5 px-2 py-2">
                       <Link
                         href="/settings/members"
-                        className="rounded-md px-2 py-1.5 text-sm text-slate-700 hover:bg-slate-100"
+                        className="rounded-[var(--rounded-3)] px-2 py-1.5 text-sm text-[#e2e5ec] hover:bg-white/15"
                         onClick={() => setUserMenuOpen(false)}
                       >
                         Settings
@@ -182,7 +206,7 @@ export function AppShellClient({
                           setUserMenuOpen(false);
                           signOut({ callbackUrl: "/signin" });
                         }}
-                        className="rounded-md px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
+                        className="rounded-[var(--rounded-3)] px-2 py-1.5 text-left text-sm text-[#e2e5ec] hover:bg-white/15"
                       >
                         Logout
                       </button>
@@ -194,7 +218,7 @@ export function AppShellClient({
           </div>
         </header>
 
-        {/* Page body */}
+        {/* Page body — template: app-body, container-fluid, gray-100 bg */}
         <main className="flex-1 overflow-auto p-4 lg:p-6">{children}</main>
       </div>
     </div>
