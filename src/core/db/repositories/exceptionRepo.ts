@@ -117,6 +117,19 @@ export function findApprovedExceptionsByContractVersion(contractVersionId: strin
   });
 }
 
+/** Approved exceptions for a version with title (for export snapshot). */
+export function findApprovedExceptionsWithTitlesByContractVersion(contractVersionId: string) {
+  return prisma.exceptionRequest.findMany({
+    where: {
+      contractVersionId,
+      status: "APPROVED",
+      clauseFindingId: { not: null },
+    },
+    select: { id: true, title: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 export function updateExceptionRequest(id: string, data: Prisma.ExceptionRequestUpdateInput) {
   return prisma.exceptionRequest.update({ where: { id }, data });
 }

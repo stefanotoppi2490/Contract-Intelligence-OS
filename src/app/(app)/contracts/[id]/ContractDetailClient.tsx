@@ -337,28 +337,35 @@ export function ContractDetailClient({
     }
   }
 
+  const [exportFormat, setExportFormat] = useState<"pdf" | "html" | "md">("html");
+  const [includeNarrativeExport, setIncludeNarrativeExport] = useState(false);
+
   async function exportExecutiveSummary(versionId: string, policyId: string) {
     const key = `${versionId}-export`;
     setExportingRiskSummary(key);
+    setError(null);
     try {
-      const res = await fetch(
-        `/api/contracts/${contractId}/versions/${versionId}/risk-summary/export`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ policyId }),
-        }
-      );
+      const res = await fetch(`/api/contracts/${contractId}/executive-summary/export`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          policyId,
+          versionId,
+          format: exportFormat,
+          includeNarrative: includeNarrativeExport,
+        }),
+      });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setError(data.error ?? "Export failed");
+        setError(data.error ?? (res.status === 403 ? "PDF export requires LEGAL, RISK, or ADMIN role." : "Export failed"));
         return;
       }
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "Executive_Summary.html";
+      const ext = exportFormat === "md" ? "md" : exportFormat === "pdf" ? "pdf" : "html";
+      a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? `ExecutiveSummary.${ext}`;
       a.click();
       URL.revokeObjectURL(url);
     } finally {
@@ -701,6 +708,24 @@ export function ContractDetailClient({
                           </option>
                         ))}
                       </select>
+                      <Label className="text-xs text-muted-foreground">Format:</Label>
+                      <select
+                        className="rounded border bg-background px-2 py-1 text-sm"
+                        value={exportFormat}
+                        onChange={(e) => setExportFormat(e.target.value as "pdf" | "html" | "md")}
+                      >
+                        <option value="pdf">PDF</option>
+                        <option value="html">HTML</option>
+                        <option value="md">Markdown</option>
+                      </select>
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <input
+                          type="checkbox"
+                          checked={includeNarrativeExport}
+                          onChange={(e) => setIncludeNarrativeExport(e.target.checked)}
+                        />
+                        Include AI narrative
+                      </label>
                       <Button
                         size="sm"
                         variant="outline"

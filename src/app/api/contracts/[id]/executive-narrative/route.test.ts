@@ -24,12 +24,16 @@ describe("POST /api/contracts/[id]/executive-narrative", () => {
   const versionId = "v-1";
   const policyId = "p-1";
 
+  const session = {
+    user: { id: "u-1", email: "m@test.com", name: null, image: null },
+    userId: "u-1",
+    email: "m@test.com" as string | null,
+    currentWorkspaceId: workspaceId,
+    role: "MEMBER" as const,
+  };
+
   beforeEach(() => {
-    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue({
-      userId: "u-1",
-      currentWorkspaceId: workspaceId,
-      role: "MEMBER",
-    });
+    vi.mocked(getServerSessionWithWorkspace).mockResolvedValue(session);
     vi.mocked(requireWorkspace).mockImplementation(() => {});
     vi.mocked(contractRepo.getContractDetail).mockResolvedValue({
       id: contractId,
