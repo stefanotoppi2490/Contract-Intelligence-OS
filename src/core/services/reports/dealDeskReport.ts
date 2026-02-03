@@ -2,6 +2,8 @@
  * STEP 11: Deal Desk report (HTML + PDF). Management-ready from structured data + decision record.
  */
 
+import { buildDealDeskPdfBuffer } from "./DealDeskPdf";
+
 export type DealDeskReportPayload = {
   contractTitle: string;
   counterpartyName: string;
@@ -113,6 +115,5 @@ ${sections.join("\n")}
 }
 
 export async function buildDealDeskPdf(payload: DealDeskReportPayload): Promise<Uint8Array> {
-  const { buildDealDeskPdfBuffer } = await import("./DealDeskPdf.js");
   return buildDealDeskPdfBuffer(payload);
 }
